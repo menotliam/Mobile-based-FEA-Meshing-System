@@ -6,6 +6,51 @@ The system provides a mobile workflow for defining 2D geometry, configuring mate
 
 ---
 
+## Table of Contents
+
+1. [Project Overview](#project-overview)
+2. [Implemented Features](#implemented-features)
+3. [Supported Simulation Modes](#supported-simulation-modes)
+4. [System Architecture](#system-architecture)
+5. [Repository Structure](#repository-structure)
+6. [Prerequisites](#prerequisites)
+7. [Backend Setup](#backend-setup)
+8. [Mobile App Setup](#mobile-app-setup)
+9. [Running the Full System](#running-the-full-system)
+10. [Final Demo Flow](#final-demo-flow)
+11. [API Overview](#api-overview)
+12. [Important Notes for Submission](#important-notes-for-submission)
+13. [Troubleshooting](#troubleshooting)
+14. [Documentation](#documentation)
+15. [Limitations and Future Work](#limitations-and-future-work)
+
+---
+
+## Project Overview
+
+This project is an educational mobile-based FEA meshing and simulation prototype. It demonstrates how a mobile information system can manage the full simulation workflow:
+
+```text
+Geometry Input
+→ Mesh Configuration
+→ Backend Simulation
+→ FEA Computation
+→ Result Visualization
+→ Project History
+→ JSON Export
+```
+
+The project is designed for academic demonstration. It is not an industrial-grade FEA solver, but it implements a clear and explainable workflow for small 2D linear-static demo cases.
+
+The system has two main parts:
+
+| Part | Technology | Responsibility |
+|---|---|---|
+| Mobile App | React Native | UI, geometry input, project management, dashboard, export |
+| Backend API | Python + FastAPI | Validation, meshing, FEA pipeline, result formatting |
+
+---
+
 ## Implemented Features
 
 ### Mobile App
@@ -21,7 +66,9 @@ The system provides a mobile workflow for defining 2D geometry, configuring mate
   - Q4 structured rectangle mesh.
   - T3 structured rectangle mesh.
   - Delaunay T3 custom polygon mesh.
-- Processing screen with pipeline progress and error handling.
+- Material and load parameter input.
+- Processing screen with simulation pipeline progress.
+- Error handling for backend connection or validation failure.
 - Result dashboard with:
   - Original mesh layer.
   - Deformed mesh layer.
@@ -33,7 +80,7 @@ The system provides a mobile workflow for defining 2D geometry, configuring mate
   - Boundary summary.
   - Displacement result summary.
   - Mesh quality metrics.
-- JSON export package.
+- JSON export package v1.1.
 
 ### Backend
 
@@ -52,7 +99,7 @@ The system provides a mobile workflow for defining 2D geometry, configuring mate
 
 ---
 
-## Current Supported Simulation Modes
+## Supported Simulation Modes
 
 | Geometry | Algorithm | Element Type | Status |
 |---|---|---|---|
@@ -65,17 +112,62 @@ Current custom polygon input works best with simple or convex point sets. Robust
 
 ---
 
+## System Architecture
+
+High-level architecture:
+
+```text
+React Native Mobile App
+        |
+        | HTTP JSON Request
+        v
+FastAPI Backend
+        |
+        v
+SimulationPipeline
+        |
+        v
+FEA Core Modules
+        |
+        v
+Structured JSON Response
+        |
+        v
+Mobile Visualization Dashboard + Local Project Storage
+```
+
+Backend pipeline:
+
+```text
+Validate Input
+→ Build FEM Config
+→ Generate Mesh
+→ Build Material Matrix
+→ Assemble Global Stiffness Matrix
+→ Apply Boundary Conditions
+→ Solve Linear System
+→ Post-process Displacement
+→ Compute Mesh Quality
+→ Format API Response
+```
+
+---
+
 ## Repository Structure
 
 ```text
 Mobile-based-FEA-Meshing-System/
-├── api.py
+├── api.py                         # Compatibility backend entrypoint: uvicorn api:app
+├── requirements.txt               # Root Python dependencies for backend setup
 ├── backend/
-│   ├── main.py
+│   ├── __init__.py
+│   ├── main.py                    # Main FastAPI app: uvicorn backend.main:app
 │   ├── requirements.txt
 │   ├── services/
-│   │   └── simulation_service.py
+│   │   ├── __init__.py
+│   │   └── simulation_service.py  # SimulationService + SimulationPipeline
 │   └── fea_core/
+│       ├── __init__.py
 │       ├── meshing.py
 │       ├── material.py
 │       ├── element_q4.py
@@ -83,30 +175,72 @@ Mobile-based-FEA-Meshing-System/
 │       ├── assembly.py
 │       ├── solver.py
 │       └── quality.py
-├── base/
+├── base/                          # React Native mobile app
+│   ├── package.json
+│   ├── android/
+│   ├── ios/
 │   └── src/
 │       ├── screen/
+│       │   ├── MyProjects.js
+│       │   ├── GeometryEditor.js
+│       │   ├── ProcessingStatus.js
+│       │   └── MeshQualityView.js
 │       ├── services/
+│       │   └── feaApi.js
 │       ├── storage/
+│       │   └── projectStorage.js
 │       └── utils/
-├── ThuatToan_Final/
+│           └── exportSimulation.js
+├── ThuatToan_Final/               # Original academic FEA core used by compatibility wrappers
 ├── Master_Context.md
 ├── Architecture.md
 ├── Design_System.md
 ├── Coding_Rules.md
 ├── Demo_Checklist.md
-└── Presentation_Script.md
+├── Presentation_Script.md
+└── Final_Status_Report.md
 ```
+
+Important: `ThuatToan_Final/` is still required because several backend FEA wrapper modules depend on the original academic implementation.
+
+---
+
+## Prerequisites
+
+### Required Software
+
+- Python 3.10 or later recommended.
+- Node.js 18 or later recommended.
+- npm.
+- Android Studio.
+- Android SDK and Android emulator.
+- Java/JDK compatible with React Native Android build.
+- Git.
+
+### Recommended Development Environment
+
+- Windows 10/11.
+- Android Studio emulator.
+- VS Code or another code editor.
+- PowerShell or terminal.
 
 ---
 
 ## Backend Setup
 
-From the repository root:
+Open a terminal at the repository root:
+
+```bash
+cd Mobile-based-FEA-Meshing-System
+```
+
+Create a Python virtual environment:
 
 ```bash
 python -m venv .venv
 ```
+
+Activate the virtual environment.
 
 Windows PowerShell:
 
@@ -114,19 +248,31 @@ Windows PowerShell:
 .\.venv\Scripts\activate
 ```
 
-Install dependencies:
+Windows CMD:
+
+```cmd
+.venv\Scripts\activate.bat
+```
+
+macOS/Linux:
+
+```bash
+source .venv/bin/activate
+```
+
+Install backend dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Run the modular backend:
+Run the backend using the modular entrypoint:
 
 ```bash
 uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
-Compatibility command:
+Alternative compatibility command:
 
 ```bash
 uvicorn api:app --host 0.0.0.0 --port 8000
@@ -147,66 +293,425 @@ Expected response:
 }
 ```
 
+Keep this backend terminal running while using the mobile app.
+
 ---
 
 ## Mobile App Setup
 
-The React Native app is located in:
-
-```text
-base/
-```
-
-Install dependencies:
+Open a second terminal and go to the React Native app folder:
 
 ```bash
-cd base
+cd Mobile-based-FEA-Meshing-System/base
+```
+
+Install mobile dependencies:
+
+```bash
 npm install
 ```
 
-Run on Android emulator:
+Start Metro bundler if needed:
+
+```bash
+npx react-native start
+```
+
+In another terminal inside `base/`, run the Android app:
 
 ```bash
 npx react-native run-android
 ```
 
-The Android emulator should call the backend through:
+### Android Emulator Backend URL
+
+For Android emulator, the app should call the backend through:
 
 ```text
 http://10.0.2.2:8000
 ```
 
-For a physical Android device, use the laptop LAN IP:
+This is the Android emulator alias for the host machine's localhost.
+
+### Physical Android Device Backend URL
+
+For a physical Android device, use the laptop's LAN IP address:
 
 ```text
 http://<laptop-lan-ip>:8000
 ```
 
+The phone and laptop must be connected to the same network.
+
 ---
 
-## Demo Flow
+## Running the Full System
+
+Use two terminals.
+
+### Terminal 1 — Backend
+
+```bash
+cd Mobile-based-FEA-Meshing-System
+.\.venv\Scripts\activate
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
+
+### Terminal 2 — Mobile App
+
+```bash
+cd Mobile-based-FEA-Meshing-System/base
+npm install
+npx react-native run-android
+```
+
+Then open the app on the Android emulator and run one of the demo flows.
+
+---
+
+## Final Demo Flow
+
+Recommended demo order:
+
+### 1. Rectangle Q4 Structured Mesh
 
 ```text
 My Projects
 → Geometry Editor
-→ Choose Rectangle Q4 / Rectangle T3 / Custom Polygon
-→ Enter material and load parameters
+→ Rectangle
+→ Create Rectangle
+→ Element Type: Q4
 → Start Generation
-→ Processing Status
 → Mesh & Quality View
-→ Toggle result layers
-→ Export JSON
-→ Return to My Projects
-→ Search / Rename / Delete / Inspect project detail
 ```
 
-Recommended demo order:
+Expected dashboard label:
 
-1. Rectangle Q4 structured mesh.
-2. Rectangle T3 structured mesh.
-3. Custom polygon Delaunay T3 mesh.
-4. Project history and mesh preview.
-5. Export JSON package.
+```text
+RECTANGLE Q4 • STRUCTURED
+```
+
+### 2. Rectangle T3 Structured Mesh
+
+```text
+My Projects
+→ Geometry Editor
+→ Rectangle
+→ Create Rectangle
+→ Element Type: T3
+→ Start Generation
+→ Mesh & Quality View
+```
+
+Expected dashboard label:
+
+```text
+RECTANGLE T3 • STRUCTURED
+```
+
+### 3. Custom Polygon Delaunay T3 Mesh
+
+Default polygon points:
+
+```text
+0,0
+2,0
+2,1
+1,1.4
+0,1
+```
+
+Flow:
+
+```text
+My Projects
+→ Geometry Editor
+→ Polygon
+→ Create Polygon
+→ Start Generation
+→ Mesh & Quality View
+```
+
+Expected dashboard label:
+
+```text
+POLYGON T3 • DELAUNAY
+```
+
+### 4. Project History
+
+After running simulations:
+
+```text
+Return to My Projects
+→ Search Q4 / T3 / Delaunay / Polygon
+→ Open project detail
+→ Inspect latest mesh preview
+→ Rename project
+→ Delete test project if needed
+```
+
+### 5. Export JSON
+
+From Mesh & Quality View:
+
+```text
+Export
+→ Inspect JSON package
+```
+
+Export package includes:
+
+- Geometry input.
+- Material input.
+- Boundary conditions.
+- Mesh configuration.
+- Solver settings.
+- Output mesh.
+- Displacement results.
+- Quality metrics.
+- Metadata.
+
+---
+
+## API Overview
+
+### Health Check
+
+```http
+GET /
+```
+
+### Run Simulation
+
+```http
+POST /api/process-mesh
+```
+
+Example rectangle request:
+
+```json
+{
+  "geometry": {
+    "type": "rectangle",
+    "rectangle": {
+      "width": 2.0,
+      "height": 1.0
+    }
+  },
+  "material": {
+    "youngModulus": 20000000000,
+    "poissonRatio": 0.3,
+    "thickness": 0.1
+  },
+  "meshConfig": {
+    "algorithm": "structured",
+    "elementType": "quad",
+    "nx": 5,
+    "ny": 1,
+    "minAngleDeg": 28.5,
+    "maxArea": 0.05
+  },
+  "boundaryConditions": {
+    "constraints": [
+      {
+        "type": "fixed",
+        "target": "edge",
+        "selector": { "edge": "left" },
+        "dof": ["u", "v"]
+      }
+    ],
+    "loads": [
+      {
+        "type": "point_load",
+        "target": "coordinate",
+        "coordinate": [2.0, 1.0],
+        "force": [0, -10000]
+      }
+    ]
+  },
+  "solverSettings": {
+    "analysisType": "linear_static",
+    "scaleFactor": 200
+  }
+}
+```
+
+Example custom polygon request:
+
+```json
+{
+  "geometry": {
+    "type": "polygon",
+    "polygon": {
+      "points": [
+        [0, 0],
+        [2, 0],
+        [2, 1],
+        [1, 1.4],
+        [0, 1]
+      ]
+    }
+  },
+  "material": {
+    "youngModulus": 20000000000,
+    "poissonRatio": 0.3,
+    "thickness": 0.1
+  },
+  "meshConfig": {
+    "algorithm": "delaunay",
+    "elementType": "t3",
+    "nx": 5,
+    "ny": 2,
+    "minAngleDeg": 28.5,
+    "maxArea": 0.05
+  },
+  "boundaryConditions": {
+    "constraints": [
+      {
+        "type": "fixed",
+        "target": "edge",
+        "selector": { "edge": "left" },
+        "dof": ["u", "v"]
+      }
+    ],
+    "loads": [
+      {
+        "type": "point_load",
+        "target": "coordinate",
+        "coordinate": [2, 1],
+        "force": [0, -10000]
+      }
+    ]
+  },
+  "solverSettings": {
+    "analysisType": "linear_static",
+    "scaleFactor": 200
+  }
+}
+```
+
+---
+
+## Important Notes for Submission
+
+When submitting the project as a zip file, keep:
+
+```text
+api.py
+requirements.txt
+backend/
+base/
+ThuatToan_Final/
+README.md
+Master_Context.md
+Architecture.md
+Design_System.md
+Coding_Rules.md
+Demo_Checklist.md
+Presentation_Script.md
+Final_Status_Report.md
+```
+
+Do not include generated or machine-specific folders:
+
+```text
+node_modules/
+base/node_modules/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.gradle/
+base/android/.gradle/
+base/android/app/build/
+build/
+dist/
+```
+
+---
+
+## Troubleshooting
+
+### Backend is not reachable from Android emulator
+
+Check that the backend is running:
+
+```bash
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
+
+For Android emulator, use:
+
+```text
+http://10.0.2.2:8000
+```
+
+Do not use `localhost` inside the Android emulator, because `localhost` refers to the emulator itself.
+
+### `ModuleNotFoundError` when running backend
+
+Make sure you run the backend command from the repository root:
+
+```bash
+cd Mobile-based-FEA-Meshing-System
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
+
+Also make sure `ThuatToan_Final/` exists in the root folder.
+
+### Python package errors
+
+Reinstall dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Android build fails
+
+Try:
+
+```bash
+cd base
+npm install
+cd android
+./gradlew clean
+cd ..
+npx react-native run-android
+```
+
+On Windows PowerShell, use:
+
+```powershell
+cd base\android
+.\gradlew clean
+cd ..
+npx react-native run-android
+```
+
+### Metro bundler issue
+
+Restart Metro:
+
+```bash
+cd base
+npx react-native start --reset-cache
+```
+
+---
+
+## Documentation
+
+Main project documentation:
+
+- `Master_Context.md` — product context, scope, assumptions, roadmap.
+- `Architecture.md` — system architecture, API contract, backend/frontend structure.
+- `Design_System.md` — visual design direction and UI guidelines.
+- `Coding_Rules.md` — implementation rules and collaboration constraints.
+- `Demo_Checklist.md` — repeatable final demo checklist.
+- `Presentation_Script.md` — technical presentation script.
+- `Final_Status_Report.md` — implemented scope, limitations, and future work.
 
 ---
 
@@ -226,20 +731,36 @@ Input validation
 → Visualization and storage
 ```
 
-The current implementation prioritizes correctness of workflow, explainability, and system integration. Engineering-grade validation, sparse solving, robust CAD-style geometry editing, and stress/strain validation are future work.
+The implementation prioritizes workflow correctness, explainability, mobile-system integration, and information management.
 
 ---
 
-## Documentation
+## Limitations and Future Work
 
-Main project documentation:
+Current limitations:
 
-- `Master_Context.md` — product context, scope, assumptions, roadmap.
-- `Architecture.md` — system architecture, API contract, backend/frontend structure.
-- `Design_System.md` — visual design direction and UI guidelines.
-- `Coding_Rules.md` — implementation rules and collaboration constraints.
-- `Demo_Checklist.md` — repeatable final demo checklist.
-- `Presentation_Script.md` — technical presentation script.
+- Educational accuracy, not engineering-certified validation.
+- Dense matrix solving, suitable for small meshes only.
+- Simplified point load model.
+- Fixed-left-edge support as the default boundary condition.
+- Custom polygon mode works best with simple or convex point sets.
+- Robust concave polygon clipping/filtering is not implemented.
+- Stress/strain engineering validation is not implemented.
+- No cloud backend, authentication, or multi-user database.
+- No PDF/image report export.
+
+Future work:
+
+- Robust polygon clipping and filtering for concave geometry.
+- CAD-like sketch editor.
+- User-selectable supports and load points.
+- Multiple load cases.
+- Stress and strain computation with validation.
+- Sparse matrix assembly and solver.
+- Material library.
+- PDF/image report export.
+- Backend database and cloud deployment.
+- Authentication and user accounts.
 
 ---
 
