@@ -308,49 +308,80 @@ def build_error_response(code, message, details=None, suggested_action="Review t
     }
 
 
-class SimulationService:
-    """Service layer that runs the current academic FEA simulation pipeline."""
+class SimulationPipeline:
+    """Lightweight pipeline wrapper for the current academic FEA demo."""
 
-    @staticmethod
-    def run(content):
-        started_at = time.perf_counter()
-        config = build_fem_config(content)
-        scale_factor = config["solver_settings"]["scaleFactor"]
+    def __init__(self, content):
+        self.content = content
+        self.started_at = time.perf_counter()
+        self.config = None
+        self.scale_factor = None
+        self.nodes = None
+        self.elements = None
+        self.D = None
+        self.K_global = None
+        self.U_global = None
+        self.U_formatted = None
+        self.deformed_nodes = None
+        self.displacement_magnitude = None
+        self.quality = None
+        self.fixed_node_ids = []
+        self.load_markers = []
 
-        # 1. MESHING
-        mesher = MeshGenerator(config)
-        nodes, elements = mesher.generate()
+    def validate(self):
+        self.config = build_fem_config(self.content)
+        self.scale_factor = self.config["solver_settings"]["scaleFactor"]
+        return self
 
-        # 2. MATERIAL MATRIX
-        D = get_D_matrix(config)
+    def generate_mesh(self):
+        mesher = MeshGenerator(self.config)
+        self.nodes, self.elements = mesher.generate()
+        return self
 
-        # 3. ASSEMBLE GLOBAL STIFFNESS
-        K_global = assemble_K_global(nodes, elements, D, config, verbose=False)
+    def build_material(self):
+        self.D = get_D_matrix(self.config)
+        return self
 
-        # 4. APPLY BC + SOLVE
-        U_global, _ = apply_bcs_and_solve(K_global, nodes, config)
+    def assemble(self):
+        self.K_global = assemble_K_global(
+            self.nodes,
+            self.elements,
+            self.D,
+            self.config,
+            verbose=False,
+        )
+        return self
 
-        # 5. POST-PROCESS
-        U_formatted = U_global.reshape(-1, 2)
-        deformed_nodes = nodes + U_formatted * scale_factor
-        displacement_magnitude = np.linalg.norm(U_formatted, axis=1)
-        max_node_id = int(np.argmax(displacement_magnitude)) if len(displacement_magnitude) else 0
+    def solve(self):
+        self.U_global, _ = apply_bcs_and_solve(self.K_global, self.nodes, self.config)
+        return self
 
-        nodes_out = build_nodes_out(nodes)
-        elements_out = build_elements_out(elements, config["mesh"]["element_type"])
-        deformed_out = build_nodes_out(deformed_nodes)
+    def postprocess(self):
+        self.U_formatted = self.U_global.reshape(-1, 2)
+        self.deformed_nodes = self.nodes + self.U_formatted * self.scale_factor
+        self.displacement_magnitude = np.linalg.norm(self.U_formatted, axis=1)
+        self.fixed_node_ids = get_fixed_node_ids(self.nodes, self.config)
+        self.load_markers = get_load_markers(self.nodes, self.config)
+        return self
+
+    def compute_quality(self):
+        self.quality = compute_mesh_quality(self.nodes, self.elements)
+        return self
+
+    def to_response(self):
+        max_node_id = int(np.argmax(self.displacement_magnitude)) if len(self.displacement_magnitude) else 0
+        nodes_out = build_nodes_out(self.nodes)
+        elements_out = build_elements_out(self.elements, self.config["mesh"]["element_type"])
+        deformed_out = build_nodes_out(self.deformed_nodes)
         disp_out = [
             {"id": i, "ux": float(u[0]), "uy": float(u[1])}
-            for i, u in enumerate(U_formatted)
+            for i, u in enumerate(self.U_formatted)
         ]
         displacement_magnitude_out = [
             {"id": i, "value": float(value)}
-            for i, value in enumerate(displacement_magnitude)
+            for i, value in enumerate(self.displacement_magnitude)
         ]
-        quality = compute_mesh_quality(nodes, elements)
-        fixed_node_ids = get_fixed_node_ids(nodes, config)
-        load_markers = get_load_markers(nodes, config)
-        processing_time_ms = int((time.perf_counter() - started_at) * 1000)
+        processing_time_ms = int((time.perf_counter() - self.started_at) * 1000)
 
         return {
             "status": "success",
@@ -365,25 +396,45 @@ class SimulationService:
                     "displacementMagnitude": displacement_magnitude_out,
                     "maxDisplacement": {
                         "nodeId": max_node_id,
-                        "value": float(displacement_magnitude[max_node_id]) if len(displacement_magnitude) else 0.0,
-                        "ux": float(U_formatted[max_node_id][0]) if len(U_formatted) else 0.0,
-                        "uy": float(U_formatted[max_node_id][1]) if len(U_formatted) else 0.0,
+                        "value": float(self.displacement_magnitude[max_node_id]) if len(self.displacement_magnitude) else 0.0,
+                        "ux": float(self.U_formatted[max_node_id][0]) if len(self.U_formatted) else 0.0,
+                        "uy": float(self.U_formatted[max_node_id][1]) if len(self.U_formatted) else 0.0,
                     },
                 },
                 "boundaryVisualization": {
-                    "fixedNodeIds": fixed_node_ids,
-                    "loadMarkers": load_markers,
+                    "fixedNodeIds": self.fixed_node_ids,
+                    "loadMarkers": self.load_markers,
                 },
-                "quality": quality,
+                "quality": self.quality,
             },
             "metadata": {
                 "processingTimeMs": processing_time_ms,
                 "nodeCount": len(nodes_out),
                 "elementCount": len(elements_out),
-                "algorithm": config["mesh"].get("algorithm", "structured"),
-                "elementType": config["mesh"].get("element_type", "quad"),
-                "scaleFactor": scale_factor,
-                "meshInfo": config["mesh"],
+                "algorithm": self.config["mesh"].get("algorithm", "structured"),
+                "elementType": self.config["mesh"].get("element_type", "quad"),
+                "scaleFactor": self.scale_factor,
+                "meshInfo": self.config["mesh"],
             },
             "warnings": [],
         }
+
+    def run(self):
+        return (
+            self.validate()
+            .generate_mesh()
+            .build_material()
+            .assemble()
+            .solve()
+            .postprocess()
+            .compute_quality()
+            .to_response()
+        )
+
+
+class SimulationService:
+    """Service layer that runs the current academic FEA simulation pipeline."""
+
+    @staticmethod
+    def run(content):
+        return SimulationPipeline(content).run()
