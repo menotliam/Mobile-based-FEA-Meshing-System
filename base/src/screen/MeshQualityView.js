@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, SafeAreaView, Switch, Modal, Platform, StatusBar } from 'react-native';
 import Svg, { Polygon, Polyline, Line, Text as SvgText } from 'react-native-svg';
 import Feather from 'react-native-vector-icons/Feather';
@@ -6,18 +6,31 @@ import Feather from 'react-native-vector-icons/Feather';
 export default function MeshQualityView({ onBack, meshingData }) {
   const [highlightBad, setHighlightBad] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
-  console.log('Received meshing data:', meshingData);
-  // Get data mapped from API result
-  const nodes = meshingData?.result?.nodes || [];
-  const deformedNodes = meshingData?.result?.deformedNodes || [];
-  const elements = meshingData?.result?.elements || [];
-  const fixedNodeIds = meshingData?.result?.fixedNodeIds || [];
-  const nodeCount = meshingData?.result?.nodeCount || 0;
-  const elementCount = meshingData?.result?.elementCount || 0;
-  const meshInfo = meshingData?.result?.meshInfo || {};
-  const scaleFactor = meshingData?.result?.scaleFactor || 200;
 
-  const renderMockMesh = () => {
+  const simulationResult = meshingData?.result || {};
+  const structuredData = simulationResult?.data || {};
+  const metadata = simulationResult?.metadata || {};
+  const mesh = structuredData?.mesh || {};
+  const results = structuredData?.results || {};
+  const boundaryVisualization = structuredData?.boundaryVisualization || {};
+  const quality = structuredData?.quality || {};
+
+  // Backward-compatible fallback while Phase 1 stabilizes the API contract.
+  const nodes = mesh.nodes || simulationResult.nodes || [];
+  const deformedNodes = results.deformedNodes || simulationResult.deformedNodes || [];
+  const elements = mesh.elements || simulationResult.elements || [];
+  const fixedNodeIds = boundaryVisualization.fixedNodeIds || simulationResult.fixedNodeIds || [];
+  const loadMarkers = boundaryVisualization.loadMarkers || simulationResult.loadMarkers || [];
+  const nodeCount = metadata.nodeCount || simulationResult.nodeCount || nodes.length || 0;
+  const elementCount = metadata.elementCount || simulationResult.elementCount || elements.length || 0;
+  const meshInfo = metadata.meshInfo || simulationResult.meshInfo || {};
+  const scaleFactor = metadata.scaleFactor || simulationResult.scaleFactor || 200;
+  const maxDisplacement = results.maxDisplacement || { value: 0, nodeId: '-' };
+  const badElementIds = useMemo(() => {
+    return new Set((quality.elementMetrics || []).filter((item) => item.isBad).map((item) => item.id));
+  }, [quality.elementMetrics]);
+
+  const renderMesh = () => {
     if (!nodes.length || !elements.length || !deformedNodes.length) {
       return (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -33,7 +46,6 @@ export default function MeshQualityView({ onBack, meshingData }) {
     const maxY = Math.max(...allPoints.map(n => n.y));
     const spanX = Math.max(1e-6, maxX - minX);
     const spanY = Math.max(1e-6, maxY - minY);
-    const pad = 8;
     const axisLeft = 12;
     const axisBottom = 92;
     const axisRight = 94;
@@ -41,10 +53,10 @@ export default function MeshQualityView({ onBack, meshingData }) {
     const xTickCount = 4;
     const yTickCount = 4;
 
-    const toCanvas = (x, y) => {
+    const toCanvasPoint = (x, y) => {
       const sx = axisLeft + ((x - minX) / spanX) * (axisRight - axisLeft);
       const sy = axisBottom - ((y - minY) / spanY) * (axisBottom - axisTop);
-      return `${sx},${sy}`;
+      return { sx, sy, point: `${sx},${sy}` };
     };
 
     const xTicks = Array.from({ length: xTickCount + 1 }, (_, i) => {
@@ -79,25 +91,16 @@ export default function MeshQualityView({ onBack, meshingData }) {
 
         <Line x1={axisLeft} y1={axisBottom} x2={axisRight} y2={axisBottom} stroke="#111827" strokeWidth="0.45" />
         <Line x1={axisLeft} y1={axisBottom} x2={axisLeft} y2={axisTop} stroke="#111827" strokeWidth="0.45" />
-        <SvgText x={(axisLeft + axisRight) / 2} y={99} fontSize="3" fill="#374151" textAnchor="middle">
-          Truc X (m)
-        </SvgText>
-        <SvgText x={3.5} y={(axisTop + axisBottom) / 2} fontSize="3" fill="#374151" textAnchor="middle" transform={`rotate(-90 3.5 ${(axisTop + axisBottom) / 2})`}>
-          Truc Y (m)
-        </SvgText>
+        <SvgText x={(axisLeft + axisRight) / 2} y={99} fontSize="3" fill="#374151" textAnchor="middle">X axis (m)</SvgText>
+        <SvgText x={3.5} y={(axisTop + axisBottom) / 2} fontSize="3" fill="#374151" textAnchor="middle" transform={`rotate(-90 3.5 ${(axisTop + axisBottom) / 2})`}>Y axis (m)</SvgText>
 
         {elements.map((el, i) => {
-          const originalPoints = el.nodes.map((nId) => {
-            const node = nodes[nId];
-            return toCanvas(node.x, node.y);
-          });
-          const deformedPoints = el.nodes.map((nId) => {
-            const node = deformedNodes[nId];
-            return toCanvas(node.x, node.y);
-          });
+          const originalPoints = el.nodes.map((nId) => toCanvasPoint(nodes[nId].x, nodes[nId].y).point);
+          const deformedPoints = el.nodes.map((nId) => toCanvasPoint(deformedNodes[nId].x, deformedNodes[nId].y).point);
+          const isBad = badElementIds.has(el.id ?? i);
 
           return (
-            <React.Fragment key={i}>
+            <React.Fragment key={el.id ?? i}>
               <Polyline
                 points={`${originalPoints.join(' ')} ${originalPoints[0]}`}
                 fill="none"
@@ -109,8 +112,8 @@ export default function MeshQualityView({ onBack, meshingData }) {
               <Polyline
                 points={`${deformedPoints.join(' ')} ${deformedPoints[0]}`}
                 fill="none"
-                stroke={highlightBad && i % 2 !== 0 ? '#DC2626' : '#1D4ED8'}
-                strokeWidth="0.7"
+                stroke={highlightBad && isBad ? '#DC2626' : '#1D4ED8'}
+                strokeWidth={highlightBad && isBad ? '1.2' : '0.7'}
                 opacity="0.95"
               />
             </React.Fragment>
@@ -119,7 +122,8 @@ export default function MeshQualityView({ onBack, meshingData }) {
 
         {fixedNodeIds.map((nodeId) => {
           const node = nodes[nodeId];
-          const [sx, sy] = toCanvas(node.x, node.y).split(',').map(Number);
+          if (!node) return null;
+          const { sx, sy } = toCanvasPoint(node.x, node.y);
           return (
             <Polygon
               key={`fixed-${nodeId}`}
@@ -128,13 +132,36 @@ export default function MeshQualityView({ onBack, meshingData }) {
             />
           );
         })}
+
+        {loadMarkers.map((marker, index) => {
+          const { sx, sy } = toCanvasPoint(marker.x, marker.y);
+          const fx = marker.force?.[0] || 0;
+          const fy = marker.force?.[1] || 0;
+          const length = 5;
+          const norm = Math.max(1e-9, Math.sqrt(fx * fx + fy * fy));
+          const ex = sx + (fx / norm) * length;
+          const ey = sy - (fy / norm) * length;
+          return (
+            <Line
+              key={`load-${index}`}
+              x1={sx}
+              y1={sy}
+              x2={ex}
+              y2={ey}
+              stroke="#F59E0B"
+              strokeWidth="0.8"
+            />
+          );
+        })}
       </Svg>
     );
   };
 
+  const maxDispText = Number(maxDisplacement.value || 0).toExponential(2);
+  const stability = Math.max(0, 100 - (quality.badElementCount || 0) * 10).toFixed(1);
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* HEADER */}
       <View style={[styles.header, { paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 12 : 12 }]}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack}>
           <Feather name="arrow-left" size={24} color="#333" />
@@ -151,25 +178,17 @@ export default function MeshQualityView({ onBack, meshingData }) {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* CANVAS PREVIEW */}
         <View style={styles.canvasContainer}>
           <View style={styles.canvasWrapper}>
-            {renderMockMesh()}
+            {renderMesh()}
             <View style={styles.zoomControls}>
-              <TouchableOpacity style={styles.zoomBtn}>
-                <Feather name="zoom-in" size={20} color="#374151" />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.zoomBtn}>
-                <Feather name="zoom-out" size={20} color="#374151" />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.zoomBtn}>
-                <Feather name="rotate-cw" size={20} color="#374151" />
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.zoomBtn}><Feather name="zoom-in" size={20} color="#374151" /></TouchableOpacity>
+              <TouchableOpacity style={styles.zoomBtn}><Feather name="zoom-out" size={20} color="#374151" /></TouchableOpacity>
+              <TouchableOpacity style={styles.zoomBtn}><Feather name="rotate-cw" size={20} color="#374151" /></TouchableOpacity>
             </View>
           </View>
         </View>
 
-        {/* STATS CARDS */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Nodes</Text>
@@ -179,52 +198,69 @@ export default function MeshQualityView({ onBack, meshingData }) {
             </View>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Elements (Quads)</Text>
+            <Text style={styles.statLabel}>Elements</Text>
             <View style={styles.statValueRow}>
               <Text style={styles.statValue}>{elementCount}</Text>
-              <Text style={styles.statStable}>NY={meshInfo.ny || '-'}</Text>
+              <Text style={styles.statStable}>{metadata.elementType || meshInfo.element_type || 'quad'}</Text>
             </View>
           </View>
         </View>
 
-        {/* QUALITY CHECK */}
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Max Displacement</Text>
+            <Text style={styles.metricValue}>{maxDispText} m</Text>
+            <Text style={styles.statStable}>Node #{maxDisplacement.nodeId}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Processing</Text>
+            <Text style={styles.metricValue}>{metadata.processingTimeMs || 0} ms</Text>
+            <Text style={styles.statStable}>Scale {scaleFactor}x</Text>
+          </View>
+        </View>
+
         <View style={styles.qualitySection}>
           <Text style={styles.sectionTitle}>Quality Check</Text>
-          
           <View style={styles.switchRow}>
             <View style={{ flex: 1, paddingRight: 16 }}>
               <Text style={styles.switchLabel}>Highlight bad elements</Text>
-              <Text style={styles.switchDesc}>Mark distorted or non-standard proportion surfaces</Text>
+              <Text style={styles.switchDesc}>Mark elements with high aspect ratio or near-zero area.</Text>
             </View>
-            <Switch 
-              trackColor={{ false: '#E5E7EB', true: '#BFDBFE' }} 
-              thumbColor={highlightBad ? '#1A56DB' : '#9CA3AF'} 
-              onValueChange={setHighlightBad} 
-              value={highlightBad} 
+            <Switch
+              trackColor={{ false: '#E5E7EB', true: '#BFDBFE' }}
+              thumbColor={highlightBad ? '#1A56DB' : '#9CA3AF'}
+              onValueChange={setHighlightBad}
+              value={highlightBad}
             />
           </View>
 
           <View style={styles.stabilityRow}>
             <Text style={styles.stabilityLabel}>Mesh Stability</Text>
-            <Text style={styles.stabilityPercent}>94.2%</Text>
+            <Text style={styles.stabilityPercent}>{stability}%</Text>
           </View>
           <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: '94.2%' }]} />
+            <View style={[styles.progressBarFill, { width: `${stability}%` }]} />
           </View>
 
-          {highlightBad && (
+          <View style={styles.qualityGrid}>
+            <Text style={styles.qualityText}>Bad elements: {quality.badElementCount || 0}</Text>
+            <Text style={styles.qualityText}>Min area: {Number(quality.minArea || 0).toExponential(2)} m²</Text>
+            <Text style={styles.qualityText}>Max area: {Number(quality.maxArea || 0).toExponential(2)} m²</Text>
+            <Text style={styles.qualityText}>Max aspect ratio: {Number(quality.maxAspectRatio || 0).toFixed(2)}</Text>
+          </View>
+
+          {highlightBad && (quality.badElementCount || 0) > 0 && (
             <View style={styles.warningBox}>
               <Feather name="alert-triangle" size={20} color="#DC2626" style={{ marginTop: 2 }} />
               <View style={{ marginLeft: 12, flex: 1 }}>
-                <Text style={styles.warningTitle}>12 self-intersections detected</Text>
-                <Text style={styles.warningDesc}>Check areas around the main axis</Text>
+                <Text style={styles.warningTitle}>{quality.badElementCount} bad elements detected</Text>
+                <Text style={styles.warningDesc}>Review highlighted elements and consider changing mesh density.</Text>
               </View>
             </View>
           )}
         </View>
       </ScrollView>
 
-      {/* BOTTOM NAVIGATION */}
       <View style={styles.bottomBar}>
         <TouchableOpacity style={styles.navItem} onPress={onBack}>
           <Feather name="folder" size={24} color="#9CA3AF" />
@@ -244,7 +280,6 @@ export default function MeshQualityView({ onBack, meshingData }) {
         </TouchableOpacity>
       </View>
 
-      {/* EXPORT & SHARE MODAL */}
       <Modal visible={showExportModal} transparent={true} animationType="slide" onRequestClose={() => setShowExportModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.bottomSheet}>
@@ -252,43 +287,19 @@ export default function MeshQualityView({ onBack, meshingData }) {
             <View style={styles.sheetHeader}>
               <View>
                 <Text style={styles.sheetTitle}>Export & Share</Text>
-                <Text style={styles.sheetSubtitle}>Choose a format or sharing method</Text>
+                <Text style={styles.sheetSubtitle}>JSON export will be implemented in Phase 2.</Text>
               </View>
             </View>
-
             <TouchableOpacity style={styles.shareOptionBtn}>
               <View style={[styles.shareIconBox, { backgroundColor: '#1D4ED8' }]}>
                 <Feather name="code" size={20} color="#fff" />
               </View>
               <View style={styles.shareOptionContent}>
-                <Text style={styles.shareOptionTitle}>Export JSON file</Text>
-                <Text style={styles.shareOptionDesc}>Lưu dữ liệu dưới dạng tệp .json cấu trúc</Text>
+                <Text style={styles.shareOptionTitle}>Export JSON package</Text>
+                <Text style={styles.shareOptionDesc}>Includes input, output, quality, and metadata.</Text>
               </View>
               <Feather name="chevron-right" size={20} color="#9CA3AF" />
             </TouchableOpacity>
-
-            <TouchableOpacity style={styles.shareOptionBtn}>
-              <View style={[styles.shareIconBox, { backgroundColor: '#1D4ED8' }]}>
-                <Feather name="mail" size={20} color="#fff" />
-              </View>
-              <View style={styles.shareOptionContent}>
-                <Text style={styles.shareOptionTitle}>Send via Email</Text>
-                <Text style={styles.shareOptionDesc}>Gửi đính kèm qua hộp thư điện tử</Text>
-              </View>
-              <Feather name="chevron-right" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.shareOptionBtn}>
-              <View style={[styles.shareIconBox, { backgroundColor: '#1D4ED8' }]}>
-                <Feather name="message-circle" size={20} color="#fff" />
-              </View>
-              <View style={styles.shareOptionContent}>
-                <Text style={styles.shareOptionTitle}>Share via Zalo</Text>
-                <Text style={styles.shareOptionDesc}>Chia sẻ nhanh cho liên hệ trên Zalo</Text>
-              </View>
-              <Feather name="chevron-right" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
-
             <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowExportModal(false)}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
@@ -308,53 +319,44 @@ const styles = StyleSheet.create({
   shareIconBtn: { padding: 8, backgroundColor: '#F3F4F6', borderRadius: 8, marginRight: 8 },
   exportBtn: { backgroundColor: '#1D4ED8', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8 },
   exportBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
-  
   content: { flex: 1, paddingHorizontal: 16, paddingTop: 16 },
-  
   canvasContainer: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', marginBottom: 20, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4 },
   canvasWrapper: { height: 280, width: '100%', position: 'relative', backgroundColor: '#EFF6FF' },
-  badgeView: { position: 'absolute', top: 12, left: 16, backgroundColor: '#fff', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, elevation: 3, shadowColor: '#000', shadowOffset:{width:0, height:2}, shadowOpacity:0.1, shadowRadius:2 },
-  badgeText: { fontSize: 11, fontWeight: '800', color: '#4B5563', letterSpacing: 0.5 },
   zoomControls: { position: 'absolute', top: 16, right: 16, backgroundColor: '#fff', borderRadius: 8, overflow: 'hidden', elevation: 3, shadowColor: '#000', shadowOffset:{width:0, height:2}, shadowOpacity:0.1, shadowRadius:2 },
   zoomBtn: { padding: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
-  
   statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20, gap: 12 },
   statCard: { flex: 1, backgroundColor: '#fff', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#F3F4F6', elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
   statLabel: { fontSize: 13, color: '#6B7280', fontWeight: '600', marginBottom: 8 },
   statValueRow: { flexDirection: 'row', alignItems: 'baseline' },
   statValue: { fontSize: 24, fontWeight: '800', color: '#111827', marginRight: 8 },
+  metricValue: { fontSize: 16, fontWeight: '800', color: '#111827', marginBottom: 6 },
   statIncrease: { fontSize: 13, fontWeight: '700', color: '#059669' },
   statStable: { fontSize: 13, fontWeight: '600', color: '#9CA3AF' },
-  
   qualitySection: { backgroundColor: '#fff', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#F3F4F6', marginBottom: 30, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: '#111827', marginBottom: 16 },
-  
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
   switchLabel: { fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 4 },
   switchDesc: { fontSize: 13, color: '#6B7280', lineHeight: 18 },
-  
   stabilityRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   stabilityLabel: { fontSize: 14, color: '#4B5563', fontWeight: '600' },
   stabilityPercent: { fontSize: 14, fontWeight: '800', color: '#1D4ED8' },
   progressBarBg: { height: 8, backgroundColor: '#EFF6FF', borderRadius: 4, overflow: 'hidden', marginBottom: 20 },
   progressBarFill: { height: '100%', backgroundColor: '#1D4ED8', borderRadius: 4 },
-  
+  qualityGrid: { gap: 8, marginBottom: 14 },
+  qualityText: { fontSize: 13, color: '#4B5563', fontWeight: '600' },
   warningBox: { flexDirection: 'row', backgroundColor: '#FEF2F2', padding: 16, borderRadius: 8, borderWidth: 1, borderColor: '#FECACA' },
   warningTitle: { fontSize: 14, fontWeight: '800', color: '#991B1B', marginBottom: 4 },
   warningDesc: { fontSize: 13, color: '#DC2626' },
-
   bottomBar: { flexDirection: 'row', backgroundColor: 'white', paddingVertical: 12, paddingBottom: 24, borderTopWidth: 1, borderTopColor: '#E5E7EB', justifyContent: 'space-around' },
   navItem: { alignItems: 'center', justifyContent: 'center' },
   navText: { fontSize: 10, color: '#9CA3AF', fontWeight: '700', marginTop: 4 },
   navActive: { color: '#1D4ED8' },
-
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   bottomSheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
   sheetHandle: { width: 40, height: 4, backgroundColor: '#D1D5DB', borderRadius: 2, alignSelf: 'center', marginBottom: 24 },
   sheetHeader: { marginBottom: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sheetTitle: { fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 4 },
   sheetSubtitle: { fontSize: 14, color: '#6B7280' },
-  
   shareOptionBtn: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#F3F4F6', marginBottom: 12 },
   shareIconBox: { width: 44, height: 44, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
   shareOptionContent: { flex: 1 },
