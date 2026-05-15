@@ -123,21 +123,47 @@ export async function clearAllProjects() {
   await AsyncStorage.multiRemove([PROJECTS_KEY, ...keys]);
 }
 
+function getElementLabel(input, metadata) {
+  return String(metadata?.elementType || input?.meshConfig?.elementType || input?.meshingConfig?.elementType || 'quad').toUpperCase();
+}
+
+function getAlgorithmLabel(input, metadata) {
+  return String(metadata?.algorithm || input?.meshConfig?.algorithm || input?.meshingConfig?.algorithm || 'structured').toUpperCase();
+}
+
+function isPolygonInput(input, metadata) {
+  return metadata?.geometryType === 'polygon' || input?.geometry?.type === 'polygon' || input?.shape === 'Custom Polygon';
+}
+
 function buildProjectName(input, metadata) {
+  const elementType = getElementLabel(input, metadata);
+
+  if (isPolygonInput(input, metadata)) {
+    const pointCount = input?.geometry?.polygon?.points?.length || input?.coordinates?.length || 0;
+    return `Custom Polygon ${elementType} (${pointCount} points)`;
+  }
+
   const width = input?.dimensions?.width ?? input?.geometry?.rectangle?.width ?? 2;
   const height = input?.dimensions?.height ?? input?.geometry?.rectangle?.height ?? 1;
-  return `Rectangle ${width}m × ${height}m`;
+  return `Rectangle ${width}m × ${height}m ${elementType}`;
 }
 
 function buildProjectDescription(input, metadata) {
-  const elementType = metadata?.elementType || input?.meshingConfig?.elementType || 'quad';
-  const nx = metadata?.meshInfo?.nx ?? input?.meshingConfig?.nx ?? '-';
-  const ny = metadata?.meshInfo?.ny ?? input?.meshingConfig?.ny ?? '-';
-  return `Structured ${elementType.toUpperCase()} mesh, NX=${nx}, NY=${ny}`;
+  const elementType = getElementLabel(input, metadata);
+  const algorithm = getAlgorithmLabel(input, metadata);
+
+  if (isPolygonInput(input, metadata)) {
+    return `${algorithm} ${elementType} custom polygon mesh`;
+  }
+
+  const nx = metadata?.meshInfo?.nx ?? input?.meshConfig?.nx ?? input?.meshingConfig?.nx ?? '-';
+  const ny = metadata?.meshInfo?.ny ?? input?.meshConfig?.ny ?? input?.meshingConfig?.ny ?? '-';
+  return `${algorithm} ${elementType} mesh, NX=${nx}, NY=${ny}`;
 }
 
 function buildSimulationName(input, metadata) {
   const elementCount = metadata?.elementCount ?? '-';
   const nodeCount = metadata?.nodeCount ?? '-';
-  return `Run: ${elementCount} elements, ${nodeCount} nodes`;
+  const elementType = getElementLabel(input, metadata);
+  return `Run: ${elementCount} ${elementType} elements, ${nodeCount} nodes`;
 }
