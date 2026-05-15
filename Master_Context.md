@@ -5,9 +5,9 @@
 **Project name:** Mobile-based FEA Meshing System  
 **Project type:** Multidisciplinary academic software project  
 **Domain direction:** Information Systems and Software Engineering  
-**Technical domain:** Mobile-based 2D Finite Element Analysis (FEA), meshing, simulation visualization, and project/result management.
+**Technical domain:** Mobile-based 2D Finite Element Analysis, meshing, simulation visualization, and project/result management.
 
-This document is the primary source of truth for the project. It defines the product vision, functional scope, assumptions, constraints, roadmap, and demo expectations. All future development, refactoring, UI decisions, and documentation should align with this context.
+This document is the primary source of truth for the project. It defines the product vision, implemented scope, assumptions, constraints, roadmap, limitations, and demo expectations.
 
 ---
 
@@ -17,7 +17,7 @@ The project aims to build a **mobile-based FEA meshing and simulation applicatio
 
 The system is designed not only as a numerical computation prototype but also as an **information system** that manages simulation projects, input data, computed outputs, quality metrics, metadata, and exportable result packages.
 
-The current academic demo focuses on a feasible end-to-end workflow, while the target product vision includes richer geometry input, multiple mesh types, boundary condition editing, local project history, quality metrics, and result export.
+The final academic demo focuses on a complete and repeatable end-to-end workflow with Q4, T3, and Delaunay polygon meshing support.
 
 ---
 
@@ -25,9 +25,9 @@ The current academic demo focuses on a feasible end-to-end workflow, while the t
 
 The system is positioned as an:
 
-> Educational and engineering prototype tool for mobile-based 2D FEA meshing, simulation, and visualization.
+> Educational and engineering prototype tool for mobile-based 2D FEA meshing, simulation, visualization, and project/result management.
 
-It helps users understand the FEA pipeline from geometry definition to mesh generation, stiffness assembly, solving, post-processing, and result visualization.
+It helps users understand the FEA pipeline from geometry definition to mesh generation, stiffness assembly, solving, post-processing, result visualization, local storage, and export.
 
 ### Primary Users
 
@@ -45,245 +45,164 @@ It helps users understand the FEA pipeline from geometry definition to mesh gene
 
 ---
 
-## 4. Project Goals
+## 4. Implemented Scope
 
-### Core Goals
+### Mobile Application
 
-- Provide a mobile-first workflow for defining 2D FEA simulation inputs.
-- Connect a React Native mobile app with a Python FastAPI backend.
-- Reuse a Python FEA core pipeline for meshing, assembling, solving, and post-processing.
-- Visualize original mesh, deformed mesh, displacement values, and dashboard metrics.
-- Store project input and simulation output locally when implemented.
-- Export simulation packages in JSON format.
-- Provide clean technical documentation for development, reporting, and presentation.
-
-### Educational Goals
-
-- Make the FEA workflow explainable through separated computational stages.
-- Allow step-by-step interpretation of geometry, mesh, stiffness matrix, boundary conditions, and displacement.
-- Support a repeatable demo such as a rectangle cantilever beam with fixed support and downward load.
-
-### Information System Goals
-
-To reflect the Information Systems direction, the app should support:
-
-- Project records.
-- Simulation metadata.
-- Local project history.
-- Input/output persistence.
-- Result dashboard.
-- Exportable simulation packages.
-- Clear data models for projects, inputs, outputs, quality metrics, and metadata.
-
----
-
-## 5. Functional Scope
-
-The project scope is divided into **Implemented**, **Target**, and **Future Work** to avoid overclaiming while preserving the full product direction.
-
-### Implemented Baseline
-
-- React Native mobile app with basic screen flow.
-- FastAPI backend with:
-  - `GET /`
-  - `POST /api/process-mesh`
-- Python FEA core using NumPy, SciPy, and Matplotlib.
-- 2D rectangular geometry input through width and height.
-- Structured quadrilateral Q4 mesh generation.
-- Linear elastic isotropic material model.
-- Fixed left edge boundary condition.
-- Point load applied near the top-right corner.
-- Global stiffness matrix assembly for Q4 elements.
-- Linear system solving for nodal displacement.
-- Original mesh and deformed mesh visualization on mobile.
-- Basic node count, element count, and displacement output.
-
-### Target Functional Scope
-
-- Project-based workflow.
-- Rectangle and custom polygon geometry input.
-- Structured Q4 mesh.
-- Triangle T3 mesh.
-- Delaunay meshing for polygon-like input.
-- Boundary condition editing:
-  - Fixed edge selection.
-  - Load point selection.
-  - Force vector input.
-- Linear elastic isotropic material configuration:
+- React Native mobile app with project-based flow.
+- My Projects screen.
+- Project search, rename, and delete.
+- Project detail modal with latest mesh preview.
+- Geometry Editor with:
+  - Rectangle geometry mode.
+  - Custom polygon geometry mode using editable `x,y` points.
+- Meshing/physics parameter modal with:
   - Young's modulus.
   - Poisson's ratio.
   - Thickness.
-  - SI unit system.
-- Simulation output:
+  - Point load magnitude.
+  - Q4/T3 element selection for rectangle.
+  - Automatic Delaunay + T3 mode for custom polygon.
+- Processing Status screen with backend progress and error handling.
+- Mesh & Quality View dashboard with:
   - Original mesh.
   - Deformed mesh.
-  - Displacement values.
-  - Displacement magnitude.
-  - Basic stress approximation.
-  - Displacement contour visualization.
+  - Displacement contour lite.
   - Fixed support markers.
   - Load vector markers.
-- Mesh quality dashboard:
-  - Element area.
-  - Aspect ratio.
-  - Bad element count.
-  - Min/max area.
-- Local project history with AsyncStorage.
-- JSON export of full simulation package.
+  - Bad element highlight layer.
+  - Node and element counts.
+  - Maximum displacement.
+  - Simulation metadata.
+  - Boundary summary.
+  - Displacement result summary.
+  - Mesh quality metrics.
+- Local simulation history using AsyncStorage.
+- JSON export package v1.1.
 
-### Future Work
+### Backend
 
-- Engineering-grade validation against standard FEA benchmark problems.
-- Sparse matrix assembly and solving for medium-size meshes.
-- Advanced adaptive meshing.
-- More rigorous stress/strain computation.
-- Image/PDF report export.
-- Backend database and cloud deployment.
-- Authentication and user accounts.
-- Full CAD-like sketch input.
-- Material library and more material models.
-- Multi-loadcase simulation management.
+- FastAPI backend.
+- `GET /` health check.
+- `POST /api/process-mesh` simulation endpoint.
+- Modular backend structure under `backend/`.
+- Root `api.py` compatibility entrypoint.
+- `SimulationService` and `SimulationPipeline` orchestration.
+- `backend/fea_core` compatibility/FEA layer.
+- Q4 rectangular element support.
+- T3 triangular element support.
+- Q4/T3 global assembly dispatcher.
+- Structured rectangle meshing.
+- Delaunay custom polygon T3 meshing.
+- Linear elastic isotropic material model.
+- Fixed left edge boundary condition.
+- Point load simulation.
+- Displacement post-processing.
+- Mesh quality metrics.
+- Structured API response with mesh, results, boundary visualization, quality, metadata, and warnings.
+
+### Supported Simulation Modes
+
+| Geometry | Algorithm | Element Type | Status |
+|---|---|---|---|
+| Rectangle | Structured | Q4 | Implemented |
+| Rectangle | Structured | T3 | Implemented |
+| Custom Polygon | Delaunay | T3 | Implemented |
+| Custom Polygon | Delaunay | Q4 | Not supported |
+
+---
+
+## 5. Information System Goals
+
+To reflect the Information Systems direction, the app supports:
+
+- Project records.
+- Local project history.
+- Project search.
+- Project rename.
+- Project deletion.
+- Simulation input persistence.
+- Simulation output persistence.
+- Simulation metadata.
+- Mesh/result dashboard.
+- Mesh quality summary.
+- Exportable simulation packages.
+- Clear data models for projects, inputs, outputs, quality metrics, and metadata.
+
+This means the project is not only a numerical solver. It is an application that manages engineering simulation information.
 
 ---
 
 ## 6. User Flow
 
-### Target Project-Based Flow
-
-```text
-Project Home
-  → Create/Open Project
-  → Geometry Editor
-  → Material & Load Setup
-  → Mesh Settings
-  → Processing
-  → Results / Post-processing
-  → Save / Export
-```
-
-### Demo Flow
+### Final Demo Flow
 
 ```text
 My Projects
   → Geometry Editor
+  → Choose Rectangle Q4 / Rectangle T3 / Custom Polygon
   → Meshing & Physics Parameters
   → Processing Status
   → Mesh & Quality View
+  → Export JSON
+  → Return to My Projects
+  → Search / Rename / Delete / Inspect Project Detail
 ```
+
+### Recommended Demo Order
+
+1. Rectangle Q4 structured mesh.
+2. Rectangle T3 structured mesh.
+3. Custom Polygon Delaunay T3 mesh.
+4. Result dashboard layer toggles and contour.
+5. Project history and detail mesh preview.
+6. Export JSON package.
 
 ---
 
 ## 7. Key Use Cases
 
-### UC-01 — Create a New Simulation Project
+### UC-01 — Create and Run Rectangle Q4 Simulation
 
-**Actor:** Student or engineering user  
-**Goal:** Create a project record for a new 2D FEA simulation.
-
-Steps:
-1. User opens the app.
-2. User selects Create Project.
-3. User enters project name and optional description.
-4. App creates a local project record.
-5. User proceeds to geometry definition.
-
-**Status:** Target  
-**Priority:** P1
-
-### UC-02 — Define Geometry
-
-**Actor:** User  
-**Goal:** Define a 2D geometry for meshing.
-
-Steps:
-1. User opens Geometry Editor.
-2. User chooses geometry type: rectangle or polygon.
-3. User enters dimensions or polygon points.
-4. App validates geometry.
-5. Geometry preview is shown on canvas.
-
-**Current baseline:** Rectangle dimensions  
-**Target:** Rectangle + polygon coordinate input  
-**Priority:** P0 for rectangle, P1 for polygon
-
-### UC-03 — Configure Material and Load
-
-**Actor:** User  
-**Goal:** Configure physical properties and boundary conditions.
-
-Steps:
-1. User enters material parameters.
-2. User chooses support condition.
-3. User chooses load point and force vector.
-4. App validates all inputs.
-
-**Current baseline:** Fixed left edge and point load at top-right corner  
-**Target:** User-selected fixed edge and load point  
-**Priority:** P0 baseline, P1 target editor
-
-### UC-04 — Configure Mesh Settings
-
-**Actor:** User  
-**Goal:** Configure mesh generation settings.
-
-Inputs:
-- Algorithm: structured or Delaunay.
-- Element type: quad or triangle.
-- Mesh density: nx, ny.
-- Quality constraints: minAngleDeg, maxArea.
-
-**Current baseline:** Structured Q4 with nx/ny  
-**Target:** Q4, T3, Delaunay  
-**Priority:** P0 Q4, P2 T3/Delaunay
-
-### UC-05 — Run Simulation
-
-**Actor:** User  
-**Goal:** Send simulation input to backend and compute result.
-
-Steps:
-1. App builds simulation request.
-2. App sends request to FastAPI backend.
-3. Backend validates input.
-4. Backend runs simulation pipeline.
-5. Backend returns result schema.
-6. App transitions to results dashboard.
-
-**Status:** Implemented baseline  
+**Status:** Implemented  
 **Priority:** P0
 
-### UC-06 — View Result Dashboard
+User defines a rectangle, chooses Q4, enters material/load parameters, runs the backend, and views the structured Q4 result dashboard.
 
-**Actor:** User  
-**Goal:** Inspect mesh and simulation results visually.
+### UC-02 — Create and Run Rectangle T3 Simulation
 
-Target dashboard includes:
-- Original mesh.
-- Deformed mesh.
-- Displacement values.
-- Node/element counts.
-- Mesh quality metrics.
-- Layer toggles.
+**Status:** Implemented  
+**Priority:** P0
 
-**Current baseline:** Original/deformed mesh and basic stats  
-**Target:** Full visualization dashboard  
-**Priority:** P0 baseline, P1 dashboard enhancements
+User defines a rectangle, chooses T3, runs the backend, and views a triangular structured mesh result dashboard.
 
-### UC-07 — Save Project and Simulation Result
+### UC-03 — Create and Run Custom Polygon Delaunay T3 Simulation
 
-**Actor:** User  
-**Goal:** Persist project input and output locally.
+**Status:** Implemented  
+**Priority:** P0
 
-**Status:** Target  
+User defines polygon points in `x,y` format. The app automatically uses Delaunay + T3. The backend returns a triangular polygon mesh and displacement result.
+
+### UC-04 — View Result Dashboard
+
+**Status:** Implemented  
+**Priority:** P0
+
+User inspects mesh, deformation, displacement contour, boundary markers, quality metrics, metadata, and displacement summary.
+
+### UC-05 — Manage Local Projects
+
+**Status:** Implemented  
 **Priority:** P1
 
-### UC-08 — Export Simulation Package
+User can search, rename, delete, and inspect saved local simulation projects.
 
-**Actor:** User  
-**Goal:** Export complete simulation data as JSON.
+### UC-06 — Export Simulation Package
 
-**Status:** Target  
+**Status:** Implemented  
 **Priority:** P1
+
+User can export a JSON package containing input, output, mesh, results, quality metrics, and metadata.
 
 ---
 
@@ -313,7 +232,7 @@ Target dashboard includes:
     "height": 1.0
   },
   "polygon": {
-    "points": [[0, 0], [2, 0], [2, 1], [0, 1]]
+    "points": [[0, 0], [2, 0], [2, 1], [1, 1.4], [0, 1]]
   }
 }
 ```
@@ -336,7 +255,7 @@ Target dashboard includes:
 ```json
 {
   "algorithm": "structured | delaunay",
-  "elementType": "quad | triangle",
+  "elementType": "quad | t3",
   "nx": 5,
   "ny": 2,
   "minAngleDeg": 28.5,
@@ -373,58 +292,42 @@ Target dashboard includes:
 
 ### Accuracy
 
-The demo targets **educational accuracy**. The FEA pipeline should follow correct conceptual and mathematical structure for small 2D linear elastic problems. Engineering-grade validation is future work.
+The demo targets **educational accuracy**. The FEA pipeline follows the conceptual and mathematical structure of small 2D linear elastic problems. Engineering-grade validation is future work.
 
 ### Performance
 
-For small meshes of approximately 10–200 elements, the API should ideally return results within 3–5 seconds on a local development machine.
+For small meshes, the API should ideally return results within a few seconds on a local development machine.
 
 ### Supported Problem Size
 
 Current academic demo:
-- Small mesh.
+
+- Small meshes.
 - Dense matrix assembly.
 - Local backend computation.
+- Educational dashboard visualization.
 
 Future work:
+
 - Sparse matrix assembly.
-- Medium-size mesh support.
+- Larger mesh support.
 - Performance profiling.
 
 ### Offline/Online Mode
 
-- Mobile UI and project history should be available offline.
+- Mobile UI and project history are local.
 - Simulation solving requires the local FastAPI backend.
 - Android emulator uses `10.0.2.2:8000`.
-- Physical device demo may use the laptop's LAN IP.
-
-### Testing
-
-Minimum testing expectations:
-- Unit tests for D matrix generation.
-- Unit tests for structured mesh generation.
-- Unit tests for Q4 element stiffness matrix shape.
-- Solver sanity check.
-- Manual UI testing.
-- API smoke test if time allows.
+- Physical device demo may use the laptop LAN IP.
 
 ### Security
 
 For the academic demo:
+
 - No authentication is required.
 - Input validation is required.
 - CORS may be open during local demo.
-- CORS should be restricted for deployment.
-
-### Error Handling
-
-The system should show meaningful errors for:
-- Server unreachable.
-- Invalid geometry.
-- Invalid material input.
-- Mesh generation failure.
-- Solver failure.
-- Unsupported element type.
+- CORS should be restricted for production deployment.
 
 ---
 
@@ -435,71 +338,86 @@ The system assumes:
 - 2D analysis only.
 - SI unit system.
 - Linear elastic isotropic material.
-- Small deformation context.
-- Backend solver required for simulation.
-- Educational accuracy for demo stage.
+- Small deformation educational context.
+- Backend solver is required for simulation.
 - Small mesh size for current implementation.
 - One main load case per simulation in the academic demo.
-- The mobile app acts as the UI and visualization dashboard.
+- Fixed left edge support is the default support condition.
+- Point load is the default load model.
+- The mobile app acts as the UI, project management layer, and visualization dashboard.
 - The backend owns numerical computation and post-processing scalar generation.
 
 ---
 
 ## 11. Current Academic Demo Limitations
 
-The following limitations should be acknowledged carefully during reporting:
+The following limitations should be acknowledged during reporting:
 
-- Current solver baseline focuses on rectangular Q4 meshes.
-- Triangle and Delaunay meshing require additional stiffness and assembly support.
-- Current load model is closer to a point load than true distributed pressure.
-- Dense matrix solving does not scale to large meshes.
-- Mesh quality metrics are target features and may need implementation.
-- Stress/strain contour is not engineering-grade unless validated.
-- Current project list may use mock data until AsyncStorage persistence is implemented.
+- The system targets educational/demo accuracy, not engineering-certified analysis.
+- The solver uses dense matrix operations and is suitable for small meshes.
+- The load model is simplified as a point load.
+- Boundary editing is limited; fixed-left-edge support is the current default.
+- Custom polygon mode works best with simple or convex point sets.
+- Robust concave polygon clipping/filtering is future work.
+- Stress/strain computation and validation are future work.
+- No cloud backend, authentication, or multi-user database is implemented.
 
-These limitations are acceptable for an academic prototype as long as they are clearly separated from target and future features.
+These limitations are acceptable for an academic prototype as long as they are clearly separated from implemented scope and future work.
 
 ---
 
-## 12. Implementation Roadmap
+## 12. Implementation Roadmap Status
 
 ### Phase 1 — Stabilize End-to-End Academic Demo
 
-Priority: P0
+Status: Implemented
 
-- Stabilize Q4 rectangle simulation.
-- Ensure API works reliably.
-- Ensure mobile app can send input and receive output.
-- Display original mesh, deformed mesh, displacement values.
-- Improve error handling.
-- Prepare demo script.
+- Stabilized Q4 rectangle simulation.
+- Connected React Native app to FastAPI backend.
+- Added processing flow and result visualization.
+- Added structured error handling.
 
 ### Phase 2 — Add Information-System Features
 
-Priority: P1
+Status: Implemented
 
-- Add mesh quality metrics:
-  - Area.
-  - Aspect ratio.
-  - Bad element count.
-  - Min/max area.
-- Add AsyncStorage:
-  - Project records.
-  - Simulation input.
-  - Simulation output.
-- Add JSON export.
-- Improve result dashboard.
+- Added mesh quality metrics.
+- Added AsyncStorage project history.
+- Added project search, rename, and delete.
+- Added project detail with latest mesh preview.
+- Added JSON export.
 
-### Phase 3 — Expand Meshing and Visualization Capabilities
+### Phase 3 — Improve Dashboard and Visualization
 
-Priority: P2
+Status: Implemented
 
-- Add T3 element stiffness support.
-- Add Delaunay polygon meshing support.
-- Add custom polygon input.
-- Add displacement contour.
-- Add fixed/load layer toggles.
-- Add stress approximation.
+- Added layer toggles.
+- Added displacement contour lite.
+- Added displacement result panel.
+- Added simulation metadata panel.
+- Added boundary summary panel.
+- Added dynamic labels for Q4/T3/polygon results.
+
+### Phase 4 — Architecture Refactor and Meshing Expansion
+
+Status: Implemented
+
+- Added modular backend structure.
+- Added `SimulationPipeline` wrapper.
+- Added `backend/fea_core` compatibility layer.
+- Added T3 element stiffness.
+- Added Q4/T3 assembly dispatcher.
+- Added Delaunay custom polygon T3 flow.
+- Synced Architecture documentation.
+
+### Phase 5 — Final Demo Readiness and Report Support
+
+Status: In Progress
+
+- Updated README.
+- Added demo checklist.
+- Added presentation script.
+- Added final status documentation.
 
 ---
 
@@ -507,82 +425,55 @@ Priority: P2
 
 The project is considered complete for the academic demo when:
 
-- The app runs end-to-end from project creation/input to result visualization.
+- The app runs end-to-end from geometry input to result visualization.
 - FastAPI backend runs locally and processes simulation requests.
-- Q4 rectangle demo works reliably.
-- Result dashboard shows original and deformed mesh.
-- Displacement values are returned and displayed.
-- Basic mesh quality metrics are available.
-- Local storage saves project input and output.
+- Rectangle Q4 demo works reliably.
+- Rectangle T3 demo works reliably.
+- Custom Polygon Delaunay T3 demo works reliably.
+- Result dashboard shows mesh, deformation, contour, metadata, boundary summary, displacement, and quality metrics.
+- Local project history saves simulation input and output.
+- Project search, rename, delete, and detail preview work.
 - JSON export works.
-- Core FEA functions have basic unit tests.
 - Documentation files are complete:
   - `Master_Context.md`
   - `Architecture.md`
   - `Design_System.md`
+  - `Coding_Rules.md`
+  - `Demo_Checklist.md`
+  - `Presentation_Script.md`
+  - `Final_Status_Report.md`
 - A repeatable demo script is prepared.
 
 ---
 
-## 14. Demo Script
+## 14. Final Demo Script Summary
 
-### Demo Scenario: Rectangle Cantilever Beam
+### Demo Scenario 1 — Rectangle Q4
 
-**Goal:** Demonstrate the complete FEA pipeline using a simple 2D cantilever beam.
+- Geometry: Rectangle 2.0m × 1.0m.
+- Element type: Q4.
+- Algorithm: Structured.
+- Material: E = 20e9 Pa, ν = 0.3, thickness = 0.1m.
+- Boundary: fixed left edge.
+- Load: downward point load.
 
-### Input
+### Demo Scenario 2 — Rectangle T3
 
-- Geometry:
-  - Rectangle.
-  - Width: 2.0 m.
-  - Height: 1.0 m.
-- Material:
-  - Young's modulus: 20e9 Pa.
-  - Poisson's ratio: 0.3.
-  - Thickness: 0.1 m.
-- Boundary condition:
-  - Fixed left edge.
-- Load:
-  - Downward point load at top-right or right edge.
-  - Force: `[0, -10000]` N.
-- Mesh:
-  - Structured Q4.
-  - Coarse run: `nx = 2`, `ny = 1`.
-  - Fine run: `nx = 5`, `ny = 2` or higher if stable.
+- Same rectangle and material settings.
+- Element type: T3.
+- Algorithm: Structured.
 
-### Demo Steps
+### Demo Scenario 3 — Custom Polygon Delaunay T3
 
-1. Open the mobile app.
-2. Show Project Home and explain project-based workflow.
-3. Create or open a simulation project.
-4. Enter rectangle dimensions.
-5. Enter material parameters.
-6. Configure fixed left edge and downward load.
-7. Configure mesh density.
-8. Start simulation.
-9. Explain backend processing pipeline:
-   - Validate input.
-   - Generate mesh.
-   - Assemble stiffness matrix.
-   - Apply boundary conditions.
-   - Solve displacement.
-   - Post-process output.
-10. Show result dashboard:
-   - Original mesh.
-   - Deformed mesh.
-   - Node count.
-   - Element count.
-   - Displacement values.
-   - Quality metrics.
-11. Compare coarse vs fine mesh.
-12. Export JSON result.
-13. Reopen saved project from local history.
+- Geometry: custom polygon points.
+- Algorithm: Delaunay.
+- Element type: T3.
 
-### Talking Points
+### Demo Talking Points
 
-- The app demonstrates a mobile-based engineering workflow.
+- The mobile app demonstrates an engineering workflow.
 - The backend performs numerical computation.
-- The frontend acts as a visualization and information dashboard.
+- The frontend acts as visualization and information dashboard.
 - The project combines software engineering, information systems, and computational mechanics.
 - Current demo prioritizes educational accuracy and system integration.
 
