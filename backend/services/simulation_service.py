@@ -28,6 +28,52 @@ def _to_int(value, fallback, field_name):
     return parsed
 
 
+def normalize_element_type(value):
+    normalized = str(value or "quad").lower().strip()
+    if normalized in {"quad", "q4", "quadrilateral"}:
+        return "quad"
+    if normalized in {"t3", "triangle", "tri", "tri3"}:
+        return "triangle"
+    raise ValueError("Only Q4 quadrilateral and T3 triangular elements are supported.")
+
+
+def normalize_algorithm(value, element_type, geometry_type):
+    normalized = str(value or "structured").lower().strip()
+    if geometry_type == "polygon":
+        return "delaunay"
+    if normalized in {"structured", "grid"}:
+        return "structured"
+    if normalized in {"delaunay", "custom"}:
+        return "delaunay"
+    if element_type == "triangle":
+        return "structured"
+    raise ValueError("Only structured and delaunay meshing algorithms are supported.")
+
+
+def normalize_polygon_points(points):
+    if not isinstance(points, list) or len(points) < 3:
+        raise ValueError("Custom polygon requires at least 3 points.")
+
+    normalized = []
+    for index, point in enumerate(points):
+        if isinstance(point, dict):
+            x = point.get("x")
+            y = point.get("y")
+        elif isinstance(point, (list, tuple)) and len(point) >= 2:
+            x, y = point[0], point[1]
+        else:
+            raise ValueError(f"Invalid polygon point at index {index}.")
+        normalized.append([
+            _to_float(x, 0.0, f"geometry.polygon.points[{index}].x"),
+            _to_float(y, 0.0, f"geometry.polygon.points[{index}].y"),
+        ])
+
+    unique_points = {tuple(point) for point in normalized}
+    if len(unique_points) < 3:
+        raise ValueError("Custom polygon requires at least 3 unique points.")
+    return normalized
+
+
 def build_fem_config(content):
     """
     Build the internal FEM config from either the current mobile payload
@@ -42,18 +88,30 @@ def build_fem_config(content):
     boundary_conditions = content.get("boundaryConditions", {})
     solver_settings = content.get("solverSettings", {})
 
+    geometry_type = str(geometry.get("type", content.get("shape", "rectangle"))).lower().strip()
     rectangle = geometry.get("rectangle", {}) if isinstance(geometry, dict) else {}
+    polygon = geometry.get("polygon", {}) if isinstance(geometry, dict) else {}
 
-    width = _to_float(
-        rectangle.get("width", dimensions.get("width", 2.0)),
-        2.0,
-        "geometry.rectangle.width",
-    )
-    height = _to_float(
-        rectangle.get("height", dimensions.get("height", 1.0)),
-        1.0,
-        "geometry.rectangle.height",
-    )
+    polygon_points = []
+    if geometry_type in {"polygon", "custom_polygon", "custom"}:
+        geometry_type = "polygon"
+        polygon_points = normalize_polygon_points(polygon.get("points", content.get("coordinates", [])))
+        xs = [point[0] for point in polygon_points]
+        ys = [point[1] for point in polygon_points]
+        width = max(xs) - min(xs)
+        height = max(ys) - min(ys)
+    else:
+        geometry_type = "rectangle"
+        width = _to_float(
+            rectangle.get("width", dimensions.get("width", 2.0)),
+            2.0,
+            "geometry.rectangle.width",
+        )
+        height = _to_float(
+            rectangle.get("height", dimensions.get("height", 1.0)),
+            1.0,
+            "geometry.rectangle.height",
+        )
 
     E = _to_float(
         material.get("youngModulus", physics.get("youngModulus", 20e9)),
@@ -80,11 +138,12 @@ def build_fem_config(content):
 
     nx = _to_int(mesh_config.get("nx", meshing.get("nx", 5)), 5, "meshConfig.nx")
     ny = _to_int(mesh_config.get("ny", meshing.get("ny", 1)), 1, "meshConfig.ny")
-    algorithm = mesh_config.get("algorithm", "structured")
-    element_type = mesh_config.get("elementType", "quad")
+    element_type = normalize_element_type(mesh_config.get("elementType", meshing.get("elementType", "quad")))
+    algorithm = normalize_algorithm(mesh_config.get("algorithm", "structured"), element_type, geometry_type)
 
-    validate_simulation_inputs(width, height, E, nu, thickness, nx, ny, algorithm, element_type)
+    validate_simulation_inputs(width, height, E, nu, thickness, nx, ny, algorithm, element_type, geometry_type, polygon_points)
 
+    default_load_coordinate = [width, height] if geometry_type == "rectangle" else polygon_points[-1]
     constraints = boundary_conditions.get("constraints") or [
         {
             "type": "fixed",
@@ -98,10 +157,13 @@ def build_fem_config(content):
         {
             "type": "point_load",
             "target": "coordinate",
-            "coordinate": [width, height],
+            "coordinate": default_load_coordinate,
             "force": [0, -abs(point_load_magnitude)],
         }
     ]
+
+    mesh_source = "custom" if geometry_type == "polygon" or algorithm == "delaunay" else "auto"
+    shape_name = "custom_polygon"
 
     config = {
         "project_id": content.get("projectId"),
@@ -111,17 +173,20 @@ def build_fem_config(content):
             "thickness": thickness,
         },
         "geometry": {
+            "type": geometry_type,
             "start_x": 0.0,
             "start_y": 0.0,
             "end_x": width,
             "end_y": height,
+            "polygon_points": polygon_points,
         },
         "numerical_integration": {
             "method": "gauss_quadrature",
             "order": 2,
         },
         "mesh": {
-            "mesh_source": "auto",
+            "mesh_source": mesh_source,
+            "shape_name": shape_name,
             "element_type": element_type,
             "algorithm": algorithm,
             "nx": nx,
@@ -129,10 +194,15 @@ def build_fem_config(content):
             "minAngleDeg": mesh_config.get("minAngleDeg", meshing.get("minAngle", 28.5)),
             "maxArea": mesh_config.get("maxArea", meshing.get("maxArea", 0.05)),
         },
+        "mesh_data": {
+            shape_name: {
+                "nodes": polygon_points,
+            }
+        } if polygon_points else None,
         "boundary_conditions": {
             "method": "zeroing_out",
             "fix_nodes": map_constraints_to_legacy_fix_nodes(constraints),
-            "point_loads": map_loads_to_legacy_point_loads(loads, width, height),
+            "point_loads": map_loads_to_legacy_point_loads(loads, default_load_coordinate),
             "raw_constraints": constraints,
             "raw_loads": loads,
         },
@@ -145,7 +215,7 @@ def build_fem_config(content):
     return config
 
 
-def validate_simulation_inputs(width, height, E, nu, thickness, nx, ny, algorithm, element_type):
+def validate_simulation_inputs(width, height, E, nu, thickness, nx, ny, algorithm, element_type, geometry_type, polygon_points):
     if width <= 0:
         raise ValueError("Geometry width must be greater than 0.")
     if height <= 0:
@@ -158,10 +228,14 @@ def validate_simulation_inputs(width, height, E, nu, thickness, nx, ny, algorith
         raise ValueError("Thickness must be greater than 0.")
     if nx < 1 or ny < 1:
         raise ValueError("Mesh density nx and ny must be positive integers.")
-    if algorithm != "structured":
-        raise ValueError("Only structured meshing is implemented in the current academic demo.")
-    if element_type != "quad":
-        raise ValueError("Only Q4 quadrilateral elements are implemented in the current academic demo.")
+    if algorithm not in {"structured", "delaunay"}:
+        raise ValueError("Only structured and delaunay meshing are implemented.")
+    if element_type not in {"quad", "triangle"}:
+        raise ValueError("Only Q4 quadrilateral and T3 triangular elements are implemented.")
+    if geometry_type == "polygon" and element_type != "triangle":
+        raise ValueError("Custom polygon Delaunay meshing requires T3 triangular elements.")
+    if geometry_type == "polygon" and len(polygon_points) < 3:
+        raise ValueError("Custom polygon requires at least 3 points.")
 
 
 def map_constraints_to_legacy_fix_nodes(constraints):
@@ -184,12 +258,12 @@ def map_constraints_to_legacy_fix_nodes(constraints):
     return legacy or [{"target": "x_equal", "value": 0.0, "dof": ["u", "v"]}]
 
 
-def map_loads_to_legacy_point_loads(loads, width, height):
+def map_loads_to_legacy_point_loads(loads, fallback_coordinate):
     legacy = []
     for load in loads:
         if load.get("type") != "point_load":
             continue
-        coordinate = load.get("coordinate", [width, height])
+        coordinate = load.get("coordinate", fallback_coordinate)
         force = load.get("force", [0, -10000])
         if len(coordinate) != 2 or len(force) != 2:
             raise ValueError("Point load requires coordinate [x, y] and force [fx, fy].")
@@ -198,7 +272,7 @@ def map_loads_to_legacy_point_loads(loads, width, height):
             "value": [float(coordinate[0]), float(coordinate[1])],
             "force": [float(force[0]), float(force[1])],
         })
-    return legacy or [{"target": "coordinate", "value": [width, height], "force": [0, -10000]}]
+    return legacy or [{"target": "coordinate", "value": fallback_coordinate, "force": [0, -10000]}]
 
 
 # ==========================================
@@ -209,8 +283,9 @@ def build_nodes_out(nodes):
 
 
 def build_elements_out(elements, element_type):
+    response_type = "t3" if element_type == "triangle" else "quad"
     return [
-        {"id": i, "type": element_type, "nodes": list(map(int, el))}
+        {"id": i, "type": response_type, "nodes": list(map(int, el))}
         for i, el in enumerate(elements)
     ]
 
@@ -281,7 +356,7 @@ class SimulationPipeline:
         return self
 
     def generate_mesh(self):
-        mesher = MeshGenerator(self.config)
+        mesher = MeshGenerator(self.config, self.config.get("mesh_data"))
         self.nodes, self.elements = mesher.generate()
         return self
 
@@ -329,6 +404,7 @@ class SimulationPipeline:
             for i, value in enumerate(self.displacement_magnitude)
         ]
         processing_time_ms = int((time.perf_counter() - self.started_at) * 1000)
+        element_type = self.config["mesh"].get("element_type", "quad")
 
         return {
             "status": "success",
@@ -359,7 +435,8 @@ class SimulationPipeline:
                 "nodeCount": len(nodes_out),
                 "elementCount": len(elements_out),
                 "algorithm": self.config["mesh"].get("algorithm", "structured"),
-                "elementType": self.config["mesh"].get("element_type", "quad"),
+                "elementType": "t3" if element_type == "triangle" else "quad",
+                "geometryType": self.config["geometry"].get("type", "rectangle"),
                 "scaleFactor": self.scale_factor,
                 "meshInfo": self.config["mesh"],
             },
