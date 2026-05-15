@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, Animated, Easing, Platform, StatusBar } from 'react-native';
 import Feather from 'react-native-vector-icons/Feather';
+import { runSimulation } from '../services/feaApi';
 
 export default function ProcessingStatus({ onBack, onFixGeometry, onComplete, meshingData }) {
   const [progress, setProgress] = useState(0);
@@ -31,23 +32,7 @@ export default function ProcessingStatus({ onBack, onFixGeometry, onComplete, me
         setStatusMessage('Validating input...');
         setProgress(15);
 
-        const response = await fetch('http://10.0.2.2:8000/api/process-mesh', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(meshingData || {})
-        });
-
-        const result = await response.json();
-
-        if (!response.ok || result.status === 'error') {
-          const apiError = result.error || {};
-          setErrorTitle(apiError.code || 'Simulation Failed');
-          setErrorDescription(apiError.message || apiError.suggestedAction || 'The backend could not complete the simulation.');
-          setStatusMessage('Simulation failed.');
-          setProgress(0);
-          setHasError(true);
-          return;
-        }
+        const result = await runSimulation(meshingData || {});
 
         setProgress(45);
         setStatusMessage('Generating mesh and assembling system...');
@@ -64,9 +49,9 @@ export default function ProcessingStatus({ onBack, onFixGeometry, onComplete, me
         setTimeout(() => onComplete(result), 700);
       } catch (error) {
         console.error('API Call error:', error);
-        setErrorTitle('Server Unreachable');
-        setErrorDescription("Unable to reach the Meshing Python Server. Please make sure the FastAPI server is running locally on port 8000.");
-        setStatusMessage('Server unreachable.');
+        setErrorTitle(error.code || 'Server Unreachable');
+        setErrorDescription(error.message || error.suggestedAction || 'Unable to reach the FEA backend server.');
+        setStatusMessage('Simulation failed.');
         setProgress(0);
         setHasError(true);
       }
