@@ -147,14 +147,6 @@ export default function ProcessingStatus({ onBack, onFixGeometry, onComplete, me
           <Feather name="more-horizontal" size={24} color="#1D4ED8" />
           <Text style={[styles.navText, styles.navActive]}>PROCESS</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Feather name="database" size={24} color="#9CA3AF" />
-          <Text style={styles.navText}>LIBRARY</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Feather name="settings" size={24} color="#9CA3AF" />
-          <Text style={styles.navText}>SETTINGS</Text>
-        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
@@ -194,7 +186,7 @@ const styles = StyleSheet.create({
   fixBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: '#1D4ED8', alignItems: 'center', shadowColor: '#1D4ED8', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 },
   fixBtnText: { color: 'white', fontSize: 14, fontWeight: '700' },
   bottomBar: { flexDirection: 'row', backgroundColor: 'white', paddingVertical: 12, paddingBottom: 24, borderTopWidth: 1, borderTopColor: '#E5E7EB', justifyContent: 'space-around' },
-  navItem: { alignItems: 'center' },
+  navItem: { flex: 1, alignItems: 'center' },
   navText: { fontSize: 10, color: '#9CA3AF', fontWeight: '700', marginTop: 4 },
   navActive: { color: '#1D4ED8' }
 });
