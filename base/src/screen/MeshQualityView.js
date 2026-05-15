@@ -7,6 +7,7 @@ import { stringifySimulationExport } from '../utils/exportSimulation';
 const DEFAULT_LAYERS = {
   originalMesh: true,
   deformedMesh: true,
+  contour: false,
   fixedSupports: true,
   loadVectors: true,
   badElements: false,
@@ -15,10 +16,20 @@ const DEFAULT_LAYERS = {
 const LAYER_OPTIONS = [
   { key: 'originalMesh', label: 'Original Mesh', description: 'Dashed reference mesh' },
   { key: 'deformedMesh', label: 'Deformed Mesh', description: 'Scaled displacement result' },
+  { key: 'contour', label: 'Contour', description: 'Lite displacement magnitude field' },
   { key: 'fixedSupports', label: 'Fixed Supports', description: 'Boundary constraint markers' },
   { key: 'loadVectors', label: 'Load Vectors', description: 'Applied point load direction' },
   { key: 'badElements', label: 'Bad Elements', description: 'Highlight quality warnings' },
 ];
+
+function getContourColor(normalizedValue) {
+  const value = Math.max(0, Math.min(1, normalizedValue));
+  if (value < 0.2) return '#DBEAFE';
+  if (value < 0.4) return '#93C5FD';
+  if (value < 0.6) return '#3B82F6';
+  if (value < 0.8) return '#F59E0B';
+  return '#DC2626';
+}
 
 export default function MeshQualityView({ onBack, meshingData }) {
   const [showExportModal, setShowExportModal] = useState(false);
@@ -39,6 +50,7 @@ export default function MeshQualityView({ onBack, meshingData }) {
   const elements = mesh.elements || simulationResult.elements || [];
   const fixedNodeIds = boundaryVisualization.fixedNodeIds || simulationResult.fixedNodeIds || [];
   const loadMarkers = boundaryVisualization.loadMarkers || simulationResult.loadMarkers || [];
+  const displacementMagnitude = results.displacementMagnitude || simulationResult.displacementMagnitude || [];
   const nodeCount = metadata.nodeCount || simulationResult.nodeCount || nodes.length || 0;
   const elementCount = metadata.elementCount || simulationResult.elementCount || elements.length || 0;
   const meshInfo = metadata.meshInfo || simulationResult.meshInfo || {};
@@ -48,6 +60,20 @@ export default function MeshQualityView({ onBack, meshingData }) {
   const badElementIds = useMemo(() => {
     return new Set((quality.elementMetrics || []).filter((item) => item.isBad).map((item) => item.id));
   }, [quality.elementMetrics]);
+
+  const contourData = useMemo(() => {
+    const valueByNodeId = new Map();
+    displacementMagnitude.forEach((item) => {
+      valueByNodeId.set(Number(item.id), Number(item.value || 0));
+    });
+
+    const values = nodes.map((_, nodeId) => valueByNodeId.get(nodeId) || 0);
+    const min = values.length ? Math.min(...values) : 0;
+    const max = values.length ? Math.max(...values) : 0;
+    const range = Math.max(max - min, 1e-18);
+
+    return { valueByNodeId, min, max, range };
+  }, [displacementMagnitude, nodes]);
 
   const activeLayerCount = Object.values(visibleLayers).filter(Boolean).length;
 
@@ -60,6 +86,14 @@ export default function MeshQualityView({ onBack, meshingData }) {
 
   const resetLayers = () => {
     setVisibleLayers(DEFAULT_LAYERS);
+  };
+
+  const getElementContourFill = (elementNodeIds) => {
+    if (!elementNodeIds?.length) return '#DBEAFE';
+    const sum = elementNodeIds.reduce((total, nodeId) => total + (contourData.valueByNodeId.get(Number(nodeId)) || 0), 0);
+    const avg = sum / elementNodeIds.length;
+    const normalized = (avg - contourData.min) / contourData.range;
+    return getContourColor(normalized);
   };
 
   const renderMesh = () => {
@@ -130,9 +164,18 @@ export default function MeshQualityView({ onBack, meshingData }) {
           const originalPoints = el.nodes.map((nId) => toCanvasPoint(nodes[nId].x, nodes[nId].y).point);
           const deformedPoints = el.nodes.map((nId) => toCanvasPoint(deformedNodes[nId].x, deformedNodes[nId].y).point);
           const isBad = badElementIds.has(el.id ?? i);
+          const contourFill = getElementContourFill(el.nodes);
 
           return (
             <React.Fragment key={el.id ?? i}>
+              {visibleLayers.contour && (
+                <Polygon
+                  points={deformedPoints.join(' ')}
+                  fill={contourFill}
+                  opacity="0.62"
+                  stroke="none"
+                />
+              )}
               {visibleLayers.originalMesh && (
                 <Polyline
                   points={`${originalPoints.join(' ')} ${originalPoints[0]}`}
@@ -187,6 +230,8 @@ export default function MeshQualityView({ onBack, meshingData }) {
   };
 
   const maxDispText = Number(maxDisplacement.value || 0).toExponential(2);
+  const contourMinText = Number(contourData.min || 0).toExponential(2);
+  const contourMaxText = Number(contourData.max || 0).toExponential(2);
   const stability = Math.max(0, 100 - (quality.badElementCount || 0) * 10).toFixed(1);
 
   return (
@@ -210,6 +255,22 @@ export default function MeshQualityView({ onBack, meshingData }) {
         <View style={styles.canvasContainer}>
           <View style={styles.canvasWrapper}>
             {renderMesh()}
+            {visibleLayers.contour && (
+              <View style={styles.contourLegend}>
+                <Text style={styles.contourLegendTitle}>Displacement Contour</Text>
+                <View style={styles.contourGradientRow}>
+                  <View style={[styles.contourSwatch, { backgroundColor: '#DBEAFE' }]} />
+                  <View style={[styles.contourSwatch, { backgroundColor: '#93C5FD' }]} />
+                  <View style={[styles.contourSwatch, { backgroundColor: '#3B82F6' }]} />
+                  <View style={[styles.contourSwatch, { backgroundColor: '#F59E0B' }]} />
+                  <View style={[styles.contourSwatch, { backgroundColor: '#DC2626' }]} />
+                </View>
+                <View style={styles.contourLegendScale}>
+                  <Text style={styles.contourLegendText}>{contourMinText}</Text>
+                  <Text style={styles.contourLegendText}>{contourMaxText} m</Text>
+                </View>
+              </View>
+            )}
             <View style={styles.zoomControls}>
               <TouchableOpacity style={styles.zoomBtn}><Feather name="zoom-in" size={20} color="#374151" /></TouchableOpacity>
               <TouchableOpacity style={styles.zoomBtn}><Feather name="zoom-out" size={20} color="#374151" /></TouchableOpacity>
@@ -382,6 +443,12 @@ const styles = StyleSheet.create({
   canvasWrapper: { height: 280, width: '100%', position: 'relative', backgroundColor: '#EFF6FF' },
   zoomControls: { position: 'absolute', top: 16, right: 16, backgroundColor: '#fff', borderRadius: 8, overflow: 'hidden', elevation: 3, shadowColor: '#000', shadowOffset:{width:0, height:2}, shadowOpacity:0.1, shadowRadius:2 },
   zoomBtn: { padding: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
+  contourLegend: { position: 'absolute', left: 12, bottom: 12, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#E5E7EB', width: 150 },
+  contourLegendTitle: { color: '#111827', fontSize: 11, fontWeight: '800', marginBottom: 6 },
+  contourGradientRow: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 6 },
+  contourSwatch: { flex: 1 },
+  contourLegendScale: { flexDirection: 'row', justifyContent: 'space-between' },
+  contourLegendText: { fontSize: 9, color: '#4B5563', fontWeight: '700' },
   layerSection: { backgroundColor: '#fff', padding: 18, borderRadius: 16, borderWidth: 1, borderColor: '#F3F4F6', marginBottom: 20, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
   layerHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   layerSubtext: { fontSize: 12, color: '#6B7280', fontWeight: '600', marginTop: 4 },
