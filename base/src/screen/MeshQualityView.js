@@ -31,6 +31,15 @@ function getContourColor(normalizedValue) {
   return '#DC2626';
 }
 
+function formatEngineeringNumber(value, unit = '') {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number)) return `0${unit}`;
+  const formatted = Math.abs(number) > 0 && Math.abs(number) < 0.001
+    ? number.toExponential(3)
+    : Number(number.toFixed(6)).toString();
+  return `${formatted}${unit}`;
+}
+
 export default function MeshQualityView({ onBack, meshingData }) {
   const [showExportModal, setShowExportModal] = useState(false);
   const [visibleLayers, setVisibleLayers] = useState(DEFAULT_LAYERS);
@@ -169,40 +178,16 @@ export default function MeshQualityView({ onBack, meshingData }) {
           return (
             <React.Fragment key={el.id ?? i}>
               {visibleLayers.contour && (
-                <Polygon
-                  points={deformedPoints.join(' ')}
-                  fill={contourFill}
-                  opacity="0.62"
-                  stroke="none"
-                />
+                <Polygon points={deformedPoints.join(' ')} fill={contourFill} opacity="0.62" stroke="none" />
               )}
               {visibleLayers.originalMesh && (
-                <Polyline
-                  points={`${originalPoints.join(' ')} ${originalPoints[0]}`}
-                  fill="none"
-                  stroke="#111827"
-                  strokeDasharray="1.4 1.2"
-                  strokeWidth="0.5"
-                  opacity="0.75"
-                />
+                <Polyline points={`${originalPoints.join(' ')} ${originalPoints[0]}`} fill="none" stroke="#111827" strokeDasharray="1.4 1.2" strokeWidth="0.5" opacity="0.75" />
               )}
               {visibleLayers.deformedMesh && (
-                <Polyline
-                  points={`${deformedPoints.join(' ')} ${deformedPoints[0]}`}
-                  fill="none"
-                  stroke={visibleLayers.badElements && isBad ? '#DC2626' : '#1D4ED8'}
-                  strokeWidth={visibleLayers.badElements && isBad ? '1.2' : '0.7'}
-                  opacity="0.95"
-                />
+                <Polyline points={`${deformedPoints.join(' ')} ${deformedPoints[0]}`} fill="none" stroke={visibleLayers.badElements && isBad ? '#DC2626' : '#1D4ED8'} strokeWidth={visibleLayers.badElements && isBad ? '1.2' : '0.7'} opacity="0.95" />
               )}
               {visibleLayers.badElements && isBad && !visibleLayers.deformedMesh && (
-                <Polyline
-                  points={`${originalPoints.join(' ')} ${originalPoints[0]}`}
-                  fill="none"
-                  stroke="#DC2626"
-                  strokeWidth="1.2"
-                  opacity="0.95"
-                />
+                <Polyline points={`${originalPoints.join(' ')} ${originalPoints[0]}`} fill="none" stroke="#DC2626" strokeWidth="1.2" opacity="0.95" />
               )}
             </React.Fragment>
           );
@@ -230,6 +215,8 @@ export default function MeshQualityView({ onBack, meshingData }) {
   };
 
   const maxDispText = Number(maxDisplacement.value || 0).toExponential(2);
+  const maxDispUxText = formatEngineeringNumber(maxDisplacement.ux, ' m');
+  const maxDispUyText = formatEngineeringNumber(maxDisplacement.uy, ' m');
   const contourMinText = Number(contourData.min || 0).toExponential(2);
   const contourMaxText = Number(contourData.max || 0).toExponential(2);
   const stability = Math.max(0, 100 - (quality.badElementCount || 0) * 10).toFixed(1);
@@ -295,12 +282,7 @@ export default function MeshQualityView({ onBack, meshingData }) {
                 <Text style={styles.layerLabel}>{layer.label}</Text>
                 <Text style={styles.layerDescription}>{layer.description}</Text>
               </View>
-              <Switch
-                trackColor={{ false: '#E5E7EB', true: '#BFDBFE' }}
-                thumbColor={visibleLayers[layer.key] ? '#1D4ED8' : '#9CA3AF'}
-                onValueChange={() => toggleLayer(layer.key)}
-                value={visibleLayers[layer.key]}
-              />
+              <Switch trackColor={{ false: '#E5E7EB', true: '#BFDBFE' }} thumbColor={visibleLayers[layer.key] ? '#1D4ED8' : '#9CA3AF'} onValueChange={() => toggleLayer(layer.key)} value={visibleLayers[layer.key]} />
             </View>
           ))}
         </View>
@@ -335,6 +317,43 @@ export default function MeshQualityView({ onBack, meshingData }) {
           </View>
         </View>
 
+        <View style={styles.resultPanel}>
+          <View style={styles.resultHeaderRow}>
+            <View>
+              <Text style={styles.sectionTitle}>Displacement Result</Text>
+              <Text style={styles.layerSubtext}>Numeric post-processing summary</Text>
+            </View>
+            <View style={styles.resultBadge}>
+              <Text style={styles.resultBadgeText}>Linear Static</Text>
+            </View>
+          </View>
+
+          <View style={styles.resultHighlightCard}>
+            <Text style={styles.resultHighlightLabel}>Maximum displacement magnitude</Text>
+            <Text style={styles.resultHighlightValue}>{maxDispText} m</Text>
+            <Text style={styles.resultHighlightMeta}>Detected at node #{maxDisplacement.nodeId}</Text>
+          </View>
+
+          <View style={styles.resultGrid}>
+            <View style={styles.resultCell}>
+              <Text style={styles.resultCellLabel}>Ux</Text>
+              <Text style={styles.resultCellValue}>{maxDispUxText}</Text>
+            </View>
+            <View style={styles.resultCell}>
+              <Text style={styles.resultCellLabel}>Uy</Text>
+              <Text style={styles.resultCellValue}>{maxDispUyText}</Text>
+            </View>
+            <View style={styles.resultCell}>
+              <Text style={styles.resultCellLabel}>Contour Min</Text>
+              <Text style={styles.resultCellValue}>{contourMinText} m</Text>
+            </View>
+            <View style={styles.resultCell}>
+              <Text style={styles.resultCellLabel}>Contour Max</Text>
+              <Text style={styles.resultCellValue}>{contourMaxText} m</Text>
+            </View>
+          </View>
+        </View>
+
         <View style={styles.qualitySection}>
           <Text style={styles.sectionTitle}>Quality Check</Text>
           <View style={styles.switchRow}>
@@ -342,12 +361,7 @@ export default function MeshQualityView({ onBack, meshingData }) {
               <Text style={styles.switchLabel}>Bad element layer</Text>
               <Text style={styles.switchDesc}>Use Layer Controls to show or hide quality warnings.</Text>
             </View>
-            <Switch
-              trackColor={{ false: '#E5E7EB', true: '#BFDBFE' }}
-              thumbColor={visibleLayers.badElements ? '#1A56DB' : '#9CA3AF'}
-              onValueChange={() => toggleLayer('badElements')}
-              value={visibleLayers.badElements}
-            />
+            <Switch trackColor={{ false: '#E5E7EB', true: '#BFDBFE' }} thumbColor={visibleLayers.badElements ? '#1A56DB' : '#9CA3AF'} onValueChange={() => toggleLayer('badElements')} value={visibleLayers.badElements} />
           </View>
 
           <View style={styles.stabilityRow}>
@@ -466,6 +480,18 @@ const styles = StyleSheet.create({
   metricValue: { fontSize: 16, fontWeight: '800', color: '#111827', marginBottom: 6 },
   statIncrease: { fontSize: 13, fontWeight: '700', color: '#059669' },
   statStable: { fontSize: 13, fontWeight: '600', color: '#9CA3AF' },
+  resultPanel: { backgroundColor: '#fff', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#F3F4F6', marginBottom: 20, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
+  resultHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+  resultBadge: { backgroundColor: '#EFF6FF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: '#BFDBFE' },
+  resultBadgeText: { color: '#1D4ED8', fontSize: 11, fontWeight: '800' },
+  resultHighlightCard: { backgroundColor: '#F8FAFC', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 14 },
+  resultHighlightLabel: { color: '#6B7280', fontSize: 12, fontWeight: '700', marginBottom: 6 },
+  resultHighlightValue: { color: '#111827', fontSize: 22, fontWeight: '900', marginBottom: 4 },
+  resultHighlightMeta: { color: '#4B5563', fontSize: 12, fontWeight: '700' },
+  resultGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  resultCell: { width: '48%', backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#E5E7EB' },
+  resultCellLabel: { color: '#6B7280', fontSize: 11, fontWeight: '800', marginBottom: 6 },
+  resultCellValue: { color: '#111827', fontSize: 12, fontWeight: '800' },
   qualitySection: { backgroundColor: '#fff', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#F3F4F6', marginBottom: 30, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
