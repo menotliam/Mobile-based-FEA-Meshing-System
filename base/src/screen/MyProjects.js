@@ -8,8 +8,9 @@ import {
   SafeAreaView,
   Platform,
   StatusBar,
+  Modal,
 } from 'react-native';
-import { getProjects } from '../storage/projectStorage';
+import { getProjects, getSimulations } from '../storage/projectStorage';
 
 function formatDate(value) {
   if (!value) return 'Unknown date';
@@ -22,9 +23,19 @@ function formatDate(value) {
   });
 }
 
+function formatNumber(value, fallback = '-') {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  if (Math.abs(number) > 0 && Math.abs(number) < 0.001) return number.toExponential(2);
+  return String(Number(number.toFixed(4)));
+}
+
 export default function MyProjects({ onNavigate, refreshToken = 0 }) {
   const [projects, setProjects] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [latestSimulation, setLatestSimulation] = useState(null);
+  const [isDetailVisible, setIsDetailVisible] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -48,8 +59,33 @@ export default function MyProjects({ onNavigate, refreshToken = 0 }) {
     };
   }, [refreshToken]);
 
+  const openProjectDetail = async (project) => {
+    try {
+      const simulations = await getSimulations(project.id);
+      setSelectedProject(project);
+      setLatestSimulation(simulations?.[0] || null);
+      setIsDetailVisible(true);
+    } catch (error) {
+      console.warn('Unable to load project simulations:', error);
+      setSelectedProject(project);
+      setLatestSimulation(null);
+      setIsDetailVisible(true);
+    }
+  };
+
+  const closeProjectDetail = () => {
+    setIsDetailVisible(false);
+    setSelectedProject(null);
+    setLatestSimulation(null);
+  };
+
   const totalProjects = projects.length;
   const successfulProjects = projects.filter((project) => project.lastSimulationStatus === 'success').length;
+  const latestInput = latestSimulation?.input || {};
+  const latestOutput = latestSimulation?.output || {};
+  const latestMetadata = latestSimulation?.metadata || latestOutput?.metadata || {};
+  const latestResults = latestOutput?.data?.results || {};
+  const latestQuality = latestOutput?.data?.quality || {};
 
   return (
     <SafeAreaView style={styles.container}>
@@ -103,7 +139,7 @@ export default function MyProjects({ onNavigate, refreshToken = 0 }) {
           </View>
         ) : (
           projects.map((project) => (
-            <TouchableOpacity key={project.id} style={styles.projectItem} onPress={onNavigate}>
+            <TouchableOpacity key={project.id} style={styles.projectItem} onPress={() => openProjectDetail(project)}>
               <View style={styles.projectImageContainer}>
                 <View style={styles.projectImagePlaceholder}>
                   <Text style={styles.projectImageText}>2D</Text>
@@ -154,6 +190,102 @@ export default function MyProjects({ onNavigate, refreshToken = 0 }) {
           <Text style={styles.navText}>Settings</Text>
         </TouchableOpacity>
       </View>
+
+      <Modal visible={isDetailVisible} transparent animationType="slide" onRequestClose={closeProjectDetail}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.detailSheet}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.detailHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.detailTitle}>{selectedProject?.name || 'Project Detail'}</Text>
+                <Text style={styles.detailSubtitle}>Updated: {formatDate(selectedProject?.updatedAt)}</Text>
+              </View>
+              <TouchableOpacity style={styles.closeBtn} onPress={closeProjectDetail}>
+                <Text style={styles.closeBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.detailCard}>
+                <Text style={styles.detailSectionTitle}>Project Metadata</Text>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Status</Text>
+                  <Text style={styles.detailValue}>{selectedProject?.lastSimulationStatus || 'draft'}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Description</Text>
+                  <Text style={styles.detailValue}>{selectedProject?.description || '-'}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Created</Text>
+                  <Text style={styles.detailValue}>{formatDate(selectedProject?.createdAt)}</Text>
+                </View>
+              </View>
+
+              <View style={styles.detailCard}>
+                <Text style={styles.detailSectionTitle}>Latest Simulation Summary</Text>
+                {latestSimulation ? (
+                  <>
+                    <View style={styles.detailGrid}>
+                      <View style={styles.detailMetricBox}>
+                        <Text style={styles.detailMetricValue}>{latestMetadata.nodeCount || '-'}</Text>
+                        <Text style={styles.detailMetricLabel}>Nodes</Text>
+                      </View>
+                      <View style={styles.detailMetricBox}>
+                        <Text style={styles.detailMetricValue}>{latestMetadata.elementCount || '-'}</Text>
+                        <Text style={styles.detailMetricLabel}>Elements</Text>
+                      </View>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Max displacement</Text>
+                      <Text style={styles.detailValue}>{formatNumber(latestResults?.maxDisplacement?.value)} m</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Bad elements</Text>
+                      <Text style={styles.detailValue}>{latestQuality?.badElementCount ?? '-'}</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Processing time</Text>
+                      <Text style={styles.detailValue}>{latestMetadata.processingTimeMs || 0} ms</Text>
+                    </View>
+                  </>
+                ) : (
+                  <Text style={styles.emptyDesc}>No saved simulation record found for this project.</Text>
+                )}
+              </View>
+
+              <View style={styles.detailCard}>
+                <Text style={styles.detailSectionTitle}>Input Parameters</Text>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Geometry</Text>
+                  <Text style={styles.detailValue}>{latestInput?.dimensions?.width || '-'}m × {latestInput?.dimensions?.height || '-'}m</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Material E</Text>
+                  <Text style={styles.detailValue}>{formatNumber(latestInput?.physics?.youngModulus)} Pa</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Poisson ratio</Text>
+                  <Text style={styles.detailValue}>{formatNumber(latestInput?.physics?.poissonRatio)}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Mesh density</Text>
+                  <Text style={styles.detailValue}>NX={latestInput?.meshingConfig?.nx || '-'}, NY={latestInput?.meshingConfig?.ny || '-'}</Text>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.detailActions}>
+              <TouchableOpacity style={styles.secondaryActionBtn} onPress={closeProjectDetail}>
+                <Text style={styles.secondaryActionText}>Close</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.primaryActionBtn} onPress={() => { closeProjectDetail(); onNavigate(); }}>
+                <Text style={styles.primaryActionText}>New Run</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -200,4 +332,26 @@ const styles = StyleSheet.create({
   navIcon: { fontSize: 22, color: '#9CA3AF', marginBottom: 4 },
   navText: { fontSize: 10, color: '#9CA3AF', fontWeight: '500' },
   navActive: { color: '#1A56DB' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  detailSheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 22, paddingBottom: 36, maxHeight: '86%' },
+  sheetHandle: { width: 40, height: 4, backgroundColor: '#D1D5DB', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  detailHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 18 },
+  detailTitle: { fontSize: 20, fontWeight: '800', color: '#111827', marginBottom: 4 },
+  detailSubtitle: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
+  closeBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
+  closeBtnText: { color: '#374151', fontSize: 16, fontWeight: '800' },
+  detailCard: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 16, padding: 16, marginBottom: 14 },
+  detailSectionTitle: { fontSize: 15, color: '#111827', fontWeight: '800', marginBottom: 12 },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14, marginBottom: 10 },
+  detailLabel: { fontSize: 13, color: '#6B7280', fontWeight: '600', flex: 1 },
+  detailValue: { fontSize: 13, color: '#111827', fontWeight: '700', flex: 1.4, textAlign: 'right' },
+  detailGrid: { flexDirection: 'row', gap: 12, marginBottom: 12 },
+  detailMetricBox: { flex: 1, backgroundColor: '#EFF6FF', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#BFDBFE' },
+  detailMetricValue: { fontSize: 20, fontWeight: '800', color: '#1D4ED8', marginBottom: 4 },
+  detailMetricLabel: { fontSize: 12, color: '#4B5563', fontWeight: '700' },
+  detailActions: { flexDirection: 'row', gap: 12, marginTop: 10 },
+  secondaryActionBtn: { flex: 1, paddingVertical: 14, borderRadius: 10, backgroundColor: '#F3F4F6', alignItems: 'center' },
+  secondaryActionText: { color: '#374151', fontSize: 14, fontWeight: '800' },
+  primaryActionBtn: { flex: 1, paddingVertical: 14, borderRadius: 10, backgroundColor: '#1D4ED8', alignItems: 'center' },
+  primaryActionText: { color: '#fff', fontSize: 14, fontWeight: '800' },
 });
