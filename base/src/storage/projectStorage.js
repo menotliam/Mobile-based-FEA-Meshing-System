@@ -41,6 +41,34 @@ export async function getSimulations(projectId) {
   return Array.isArray(simulations) ? simulations : [];
 }
 
+export async function renameProject(projectId, nextName) {
+  const name = String(nextName || '').trim();
+  if (!projectId || !name) {
+    throw new Error('Project name must not be empty.');
+  }
+
+  const projects = await getProjects();
+  const nextProjects = projects.map((project) => {
+    if (project.id !== projectId) return project;
+    return {
+      ...project,
+      name,
+      updatedAt: nowIso(),
+    };
+  });
+
+  await saveProjects(nextProjects);
+  return nextProjects.find((project) => project.id === projectId) || null;
+}
+
+export async function deleteProject(projectId) {
+  if (!projectId) return;
+  const projects = await getProjects();
+  const nextProjects = projects.filter((project) => project.id !== projectId);
+  await saveProjects(nextProjects);
+  await AsyncStorage.removeItem(`${SIMULATIONS_KEY_PREFIX}${projectId}`);
+}
+
 export async function saveSimulationPackage({ project, input, output }) {
   const createdAt = nowIso();
   const projectId = project?.id || createId('project');
