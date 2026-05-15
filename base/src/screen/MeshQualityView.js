@@ -4,9 +4,25 @@ import Svg, { Polygon, Polyline, Line, Text as SvgText } from 'react-native-svg'
 import Feather from 'react-native-vector-icons/Feather';
 import { stringifySimulationExport } from '../utils/exportSimulation';
 
+const DEFAULT_LAYERS = {
+  originalMesh: true,
+  deformedMesh: true,
+  fixedSupports: true,
+  loadVectors: true,
+  badElements: false,
+};
+
+const LAYER_OPTIONS = [
+  { key: 'originalMesh', label: 'Original Mesh', description: 'Dashed reference mesh' },
+  { key: 'deformedMesh', label: 'Deformed Mesh', description: 'Scaled displacement result' },
+  { key: 'fixedSupports', label: 'Fixed Supports', description: 'Boundary constraint markers' },
+  { key: 'loadVectors', label: 'Load Vectors', description: 'Applied point load direction' },
+  { key: 'badElements', label: 'Bad Elements', description: 'Highlight quality warnings' },
+];
+
 export default function MeshQualityView({ onBack, meshingData }) {
-  const [highlightBad, setHighlightBad] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [visibleLayers, setVisibleLayers] = useState(DEFAULT_LAYERS);
 
   const simulationResult = meshingData?.result || {};
   const structuredData = simulationResult?.data || {};
@@ -28,9 +44,23 @@ export default function MeshQualityView({ onBack, meshingData }) {
   const meshInfo = metadata.meshInfo || simulationResult.meshInfo || {};
   const scaleFactor = metadata.scaleFactor || simulationResult.scaleFactor || 200;
   const maxDisplacement = results.maxDisplacement || { value: 0, nodeId: '-' };
+
   const badElementIds = useMemo(() => {
     return new Set((quality.elementMetrics || []).filter((item) => item.isBad).map((item) => item.id));
   }, [quality.elementMetrics]);
+
+  const activeLayerCount = Object.values(visibleLayers).filter(Boolean).length;
+
+  const toggleLayer = (layerKey) => {
+    setVisibleLayers((current) => ({
+      ...current,
+      [layerKey]: !current[layerKey],
+    }));
+  };
+
+  const resetLayers = () => {
+    setVisibleLayers(DEFAULT_LAYERS);
+  };
 
   const renderMesh = () => {
     if (!nodes.length || !elements.length || !deformedNodes.length) {
@@ -103,20 +133,46 @@ export default function MeshQualityView({ onBack, meshingData }) {
 
           return (
             <React.Fragment key={el.id ?? i}>
-              <Polyline points={`${originalPoints.join(' ')} ${originalPoints[0]}`} fill="none" stroke="#111827" strokeDasharray="1.4 1.2" strokeWidth="0.5" opacity="0.75" />
-              <Polyline points={`${deformedPoints.join(' ')} ${deformedPoints[0]}`} fill="none" stroke={highlightBad && isBad ? '#DC2626' : '#1D4ED8'} strokeWidth={highlightBad && isBad ? '1.2' : '0.7'} opacity="0.95" />
+              {visibleLayers.originalMesh && (
+                <Polyline
+                  points={`${originalPoints.join(' ')} ${originalPoints[0]}`}
+                  fill="none"
+                  stroke="#111827"
+                  strokeDasharray="1.4 1.2"
+                  strokeWidth="0.5"
+                  opacity="0.75"
+                />
+              )}
+              {visibleLayers.deformedMesh && (
+                <Polyline
+                  points={`${deformedPoints.join(' ')} ${deformedPoints[0]}`}
+                  fill="none"
+                  stroke={visibleLayers.badElements && isBad ? '#DC2626' : '#1D4ED8'}
+                  strokeWidth={visibleLayers.badElements && isBad ? '1.2' : '0.7'}
+                  opacity="0.95"
+                />
+              )}
+              {visibleLayers.badElements && isBad && !visibleLayers.deformedMesh && (
+                <Polyline
+                  points={`${originalPoints.join(' ')} ${originalPoints[0]}`}
+                  fill="none"
+                  stroke="#DC2626"
+                  strokeWidth="1.2"
+                  opacity="0.95"
+                />
+              )}
             </React.Fragment>
           );
         })}
 
-        {fixedNodeIds.map((nodeId) => {
+        {visibleLayers.fixedSupports && fixedNodeIds.map((nodeId) => {
           const node = nodes[nodeId];
           if (!node) return null;
           const { sx, sy } = toCanvasPoint(node.x, node.y);
           return <Polygon key={`fixed-${nodeId}`} points={`${sx},${sy - 1.8} ${sx - 1.4},${sy + 1.5} ${sx + 1.4},${sy + 1.5}`} fill="#DC2626" />;
         })}
 
-        {loadMarkers.map((marker, index) => {
+        {visibleLayers.loadVectors && loadMarkers.map((marker, index) => {
           const { sx, sy } = toCanvasPoint(marker.x, marker.y);
           const fx = marker.force?.[0] || 0;
           const fy = marker.force?.[1] || 0;
@@ -162,6 +218,32 @@ export default function MeshQualityView({ onBack, meshingData }) {
           </View>
         </View>
 
+        <View style={styles.layerSection}>
+          <View style={styles.layerHeaderRow}>
+            <View>
+              <Text style={styles.sectionTitle}>Layer Controls</Text>
+              <Text style={styles.layerSubtext}>{activeLayerCount} visualization layers active</Text>
+            </View>
+            <TouchableOpacity style={styles.resetLayersBtn} onPress={resetLayers}>
+              <Text style={styles.resetLayersText}>Reset</Text>
+            </TouchableOpacity>
+          </View>
+          {LAYER_OPTIONS.map((layer) => (
+            <View key={layer.key} style={styles.layerRow}>
+              <View style={styles.layerInfo}>
+                <Text style={styles.layerLabel}>{layer.label}</Text>
+                <Text style={styles.layerDescription}>{layer.description}</Text>
+              </View>
+              <Switch
+                trackColor={{ false: '#E5E7EB', true: '#BFDBFE' }}
+                thumbColor={visibleLayers[layer.key] ? '#1D4ED8' : '#9CA3AF'}
+                onValueChange={() => toggleLayer(layer.key)}
+                value={visibleLayers[layer.key]}
+              />
+            </View>
+          ))}
+        </View>
+
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Nodes</Text>
@@ -196,10 +278,15 @@ export default function MeshQualityView({ onBack, meshingData }) {
           <Text style={styles.sectionTitle}>Quality Check</Text>
           <View style={styles.switchRow}>
             <View style={{ flex: 1, paddingRight: 16 }}>
-              <Text style={styles.switchLabel}>Highlight bad elements</Text>
-              <Text style={styles.switchDesc}>Mark elements with high aspect ratio or near-zero area.</Text>
+              <Text style={styles.switchLabel}>Bad element layer</Text>
+              <Text style={styles.switchDesc}>Use Layer Controls to show or hide quality warnings.</Text>
             </View>
-            <Switch trackColor={{ false: '#E5E7EB', true: '#BFDBFE' }} thumbColor={highlightBad ? '#1A56DB' : '#9CA3AF'} onValueChange={setHighlightBad} value={highlightBad} />
+            <Switch
+              trackColor={{ false: '#E5E7EB', true: '#BFDBFE' }}
+              thumbColor={visibleLayers.badElements ? '#1A56DB' : '#9CA3AF'}
+              onValueChange={() => toggleLayer('badElements')}
+              value={visibleLayers.badElements}
+            />
           </View>
 
           <View style={styles.stabilityRow}>
@@ -217,7 +304,7 @@ export default function MeshQualityView({ onBack, meshingData }) {
             <Text style={styles.qualityText}>Max aspect ratio: {Number(quality.maxAspectRatio || 0).toFixed(2)}</Text>
           </View>
 
-          {highlightBad && (quality.badElementCount || 0) > 0 && (
+          {visibleLayers.badElements && (quality.badElementCount || 0) > 0 && (
             <View style={styles.warningBox}>
               <Feather name="alert-triangle" size={20} color="#DC2626" style={{ marginTop: 2 }} />
               <View style={{ marginLeft: 12, flex: 1 }}>
@@ -295,6 +382,15 @@ const styles = StyleSheet.create({
   canvasWrapper: { height: 280, width: '100%', position: 'relative', backgroundColor: '#EFF6FF' },
   zoomControls: { position: 'absolute', top: 16, right: 16, backgroundColor: '#fff', borderRadius: 8, overflow: 'hidden', elevation: 3, shadowColor: '#000', shadowOffset:{width:0, height:2}, shadowOpacity:0.1, shadowRadius:2 },
   zoomBtn: { padding: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
+  layerSection: { backgroundColor: '#fff', padding: 18, borderRadius: 16, borderWidth: 1, borderColor: '#F3F4F6', marginBottom: 20, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
+  layerHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  layerSubtext: { fontSize: 12, color: '#6B7280', fontWeight: '600', marginTop: 4 },
+  resetLayersBtn: { backgroundColor: '#EFF6FF', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  resetLayersText: { color: '#1D4ED8', fontWeight: '800', fontSize: 12 },
+  layerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  layerInfo: { flex: 1, paddingRight: 14 },
+  layerLabel: { color: '#111827', fontSize: 14, fontWeight: '800', marginBottom: 3 },
+  layerDescription: { color: '#6B7280', fontSize: 12, lineHeight: 16 },
   statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20, gap: 12 },
   statCard: { flex: 1, backgroundColor: '#fff', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#F3F4F6', elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
   statLabel: { fontSize: 13, color: '#6B7280', fontWeight: '600', marginBottom: 8 },
@@ -304,7 +400,7 @@ const styles = StyleSheet.create({
   statIncrease: { fontSize: 13, fontWeight: '700', color: '#059669' },
   statStable: { fontSize: 13, fontWeight: '600', color: '#9CA3AF' },
   qualitySection: { backgroundColor: '#fff', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#F3F4F6', marginBottom: 30, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#111827', marginBottom: 16 },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
   switchLabel: { fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 4 },
   switchDesc: { fontSize: 13, color: '#6B7280', lineHeight: 18 },
