@@ -40,6 +40,13 @@ function formatEngineeringNumber(value, unit = '') {
   return `${formatted}${unit}`;
 }
 
+function formatForceVector(force) {
+  if (!Array.isArray(force) || force.length < 2) return '[0, 0] N';
+  const fx = Number(force[0] || 0);
+  const fy = Number(force[1] || 0);
+  return `[${fx.toExponential(2)}, ${fy.toExponential(2)}] N`;
+}
+
 export default function MeshQualityView({ onBack, meshingData }) {
   const [showExportModal, setShowExportModal] = useState(false);
   const [visibleLayers, setVisibleLayers] = useState(DEFAULT_LAYERS);
@@ -65,6 +72,11 @@ export default function MeshQualityView({ onBack, meshingData }) {
   const meshInfo = metadata.meshInfo || simulationResult.meshInfo || {};
   const scaleFactor = metadata.scaleFactor || simulationResult.scaleFactor || 200;
   const maxDisplacement = results.maxDisplacement || { value: 0, nodeId: '-' };
+  const algorithm = metadata.algorithm || meshInfo.algorithm || 'structured';
+  const elementType = metadata.elementType || meshInfo.element_type || meshInfo.elementType || 'quad';
+  const nx = meshInfo.nx || meshingData?.meshingConfig?.nx || '-';
+  const ny = meshInfo.ny || meshingData?.meshingConfig?.ny || '-';
+  const primaryLoadMarker = loadMarkers[0] || {};
 
   const badElementIds = useMemo(() => {
     return new Set((quality.elementMetrics || []).filter((item) => item.isBad).map((item) => item.id));
@@ -108,8 +120,8 @@ export default function MeshQualityView({ onBack, meshingData }) {
   const renderMesh = () => {
     if (!nodes.length || !elements.length || !deformedNodes.length) {
       return (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: '#6B7280' }}>No FEA data available.</Text>
+        <View style={styles.emptyCanvas}>
+          <Text style={styles.emptyCanvasText}>No FEA data available.</Text>
         </View>
       );
     }
@@ -292,14 +304,14 @@ export default function MeshQualityView({ onBack, meshingData }) {
             <Text style={styles.statLabel}>Nodes</Text>
             <View style={styles.statValueRow}>
               <Text style={styles.statValue}>{nodeCount}</Text>
-              <Text style={styles.statIncrease}>NX={meshInfo.nx || '-'}</Text>
+              <Text style={styles.statIncrease}>NX={nx}</Text>
             </View>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Elements</Text>
             <View style={styles.statValueRow}>
               <Text style={styles.statValue}>{elementCount}</Text>
-              <Text style={styles.statStable}>{metadata.elementType || meshInfo.element_type || 'quad'}</Text>
+              <Text style={styles.statStable}>{elementType}</Text>
             </View>
           </View>
         </View>
@@ -314,6 +326,79 @@ export default function MeshQualityView({ onBack, meshingData }) {
             <Text style={styles.statLabel}>Processing</Text>
             <Text style={styles.metricValue}>{metadata.processingTimeMs || 0} ms</Text>
             <Text style={styles.statStable}>Scale {scaleFactor}x</Text>
+          </View>
+        </View>
+
+        <View style={styles.resultPanel}>
+          <View style={styles.resultHeaderRow}>
+            <View>
+              <Text style={styles.sectionTitle}>Simulation Metadata</Text>
+              <Text style={styles.layerSubtext}>Solver and mesh configuration</Text>
+            </View>
+            <View style={styles.resultBadge}>
+              <Text style={styles.resultBadgeText}>Academic Demo</Text>
+            </View>
+          </View>
+          <View style={styles.resultGrid}>
+            <View style={styles.resultCell}>
+              <Text style={styles.resultCellLabel}>Algorithm</Text>
+              <Text style={styles.resultCellValue}>{algorithm}</Text>
+            </View>
+            <View style={styles.resultCell}>
+              <Text style={styles.resultCellLabel}>Element Type</Text>
+              <Text style={styles.resultCellValue}>{String(elementType).toUpperCase()}</Text>
+            </View>
+            <View style={styles.resultCell}>
+              <Text style={styles.resultCellLabel}>Mesh Density</Text>
+              <Text style={styles.resultCellValue}>NX={nx}, NY={ny}</Text>
+            </View>
+            <View style={styles.resultCell}>
+              <Text style={styles.resultCellLabel}>Scale Factor</Text>
+              <Text style={styles.resultCellValue}>{scaleFactor}x</Text>
+            </View>
+            <View style={styles.resultCell}>
+              <Text style={styles.resultCellLabel}>Processing Time</Text>
+              <Text style={styles.resultCellValue}>{metadata.processingTimeMs || 0} ms</Text>
+            </View>
+            <View style={styles.resultCell}>
+              <Text style={styles.resultCellLabel}>Result Status</Text>
+              <Text style={styles.resultCellValue}>{simulationResult.status || 'success'}</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.resultPanel}>
+          <View style={styles.resultHeaderRow}>
+            <View>
+              <Text style={styles.sectionTitle}>Boundary Summary</Text>
+              <Text style={styles.layerSubtext}>Support and loading conditions</Text>
+            </View>
+            <View style={styles.resultBadge}>
+              <Text style={styles.resultBadgeText}>Q4 Beam</Text>
+            </View>
+          </View>
+          <View style={styles.resultGrid}>
+            <View style={styles.resultCell}>
+              <Text style={styles.resultCellLabel}>Support Type</Text>
+              <Text style={styles.resultCellValue}>Fixed left edge</Text>
+            </View>
+            <View style={styles.resultCell}>
+              <Text style={styles.resultCellLabel}>Fixed Nodes</Text>
+              <Text style={styles.resultCellValue}>{fixedNodeIds.length}</Text>
+            </View>
+            <View style={styles.resultCell}>
+              <Text style={styles.resultCellLabel}>Load Markers</Text>
+              <Text style={styles.resultCellValue}>{loadMarkers.length}</Text>
+            </View>
+            <View style={styles.resultCell}>
+              <Text style={styles.resultCellLabel}>Primary Load Node</Text>
+              <Text style={styles.resultCellValue}>#{primaryLoadMarker.nodeId ?? '-'}</Text>
+            </View>
+          </View>
+          <View style={styles.resultHighlightCard}>
+            <Text style={styles.resultHighlightLabel}>Primary load vector</Text>
+            <Text style={styles.resultHighlightValueSmall}>{formatForceVector(primaryLoadMarker.force)}</Text>
+            <Text style={styles.resultHighlightMeta}>Point load marker shown on the visualization canvas.</Text>
           </View>
         </View>
 
@@ -445,6 +530,8 @@ export default function MeshQualityView({ onBack, meshingData }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F9FAFB' },
+  emptyCanvas: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  emptyCanvasText: { color: '#6B7280' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
   backBtn: { padding: 4, marginRight: 12 },
   headerTitle: { fontSize: 16, fontWeight: '800', color: '#111827', flex: 1, lineHeight: 20 },
@@ -487,6 +574,7 @@ const styles = StyleSheet.create({
   resultHighlightCard: { backgroundColor: '#F8FAFC', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 14 },
   resultHighlightLabel: { color: '#6B7280', fontSize: 12, fontWeight: '700', marginBottom: 6 },
   resultHighlightValue: { color: '#111827', fontSize: 22, fontWeight: '900', marginBottom: 4 },
+  resultHighlightValueSmall: { color: '#111827', fontSize: 16, fontWeight: '900', marginBottom: 4 },
   resultHighlightMeta: { color: '#4B5563', fontSize: 12, fontWeight: '700' },
   resultGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   resultCell: { width: '48%', backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#E5E7EB' },
