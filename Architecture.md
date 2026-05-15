@@ -36,66 +36,107 @@ Mobile-based-FEA-Meshing-System/
 ├── Architecture.md
 ├── Design_System.md
 ├── README.md
+├── api.py                         # Compatibility entrypoint for uvicorn api:app
 ├── backend/
 │   ├── requirements.txt
 │   ├── main.py
-│   ├── schemas.py
+│   ├── schemas.py                 # Target / future schema extraction
 │   ├── services/
 │   │   └── simulation_service.py
 │   └── fea_core/
 │       ├── meshing.py
 │       ├── material.py
-│       ├── element_q4.py
-│       ├── element_t3.py
+│       ├── element_q4.py          # Target / future deeper extraction
+│       ├── element_t3.py          # Target / future work
 │       ├── assembly.py
 │       ├── solver.py
-│       ├── postprocess.py
+│       ├── postprocess.py         # Target / future extraction
 │       └── quality.py
-└── mobile/
+└── base/                          # Current React Native app folder
     ├── package.json
-    ├── App.js
+    ├── app.js
     └── src/
-        ├── navigation/
-        ├── context/
-        ├── screens/
-        ├── components/
+        ├── screen/
         ├── services/
         │   └── feaApi.js
         ├── storage/
         │   └── projectStorage.js
-        ├── utils/
-        └── constants/
+        └── utils/
+            └── exportSimulation.js
 ```
 
 ### Current-to-Target Mapping
 
 ```text
 Current api.py
-  → backend/main.py
-  → backend/schemas.py
-  → backend/services/simulation_service.py
+  → compatibility entrypoint importing backend.main:app
+
+Current backend/main.py
+  → FastAPI app and endpoint layer
+
+Current backend/services/simulation_service.py
+  → SimulationService and SimulationPipeline orchestration
 
 Current ThuatToan_Final/step1_meshing.py
-  → backend/fea_core/meshing.py
+  → backend/fea_core/meshing.py compatibility wrapper
 
 Current step2_get_D_matrix.py
-  → backend/fea_core/material.py
+  → backend/fea_core/material.py compatibility wrapper
 
 Current step4_get_Ke.py
-  → backend/fea_core/element_q4.py
+  → target backend/fea_core/element_q4.py future extraction
 
 Current step5_assemble_global.py
-  → backend/fea_core/assembly.py
+  → backend/fea_core/assembly.py compatibility wrapper
 
 Current step6_solve_system.py
-  → backend/fea_core/solver.py
+  → backend/fea_core/solver.py compatibility wrapper
 
 Current step7_plot_results.py
-  → backend/fea_core/postprocess.py or removed from API flow
+  → backend/fea_core/postprocess.py target or removed from API flow
 
 Current base/
-  → mobile/
+  → current mobile app folder; target may later be renamed to mobile/
 ```
+
+### Current Implementation Status After Phase 4
+
+As of the current implementation phase, the backend has been partially modularized while preserving the working academic demo.
+
+Implemented structure:
+
+```text
+backend/
+├── __init__.py
+├── main.py
+├── requirements.txt
+├── services/
+│   ├── __init__.py
+│   └── simulation_service.py
+└── fea_core/
+    ├── __init__.py
+    ├── meshing.py
+    ├── material.py
+    ├── assembly.py
+    ├── solver.py
+    └── quality.py
+```
+
+Important compatibility decisions:
+
+- Root `api.py` remains available so the old command `uvicorn api:app --host 0.0.0.0 --port 8000` still works.
+- New backend entrypoint `uvicorn backend.main:app --host 0.0.0.0 --port 8000` is also supported.
+- `backend/services/simulation_service.py` contains `SimulationService` and a lightweight `SimulationPipeline` wrapper.
+- `backend/fea_core/meshing.py`, `material.py`, `assembly.py`, and `solver.py` currently re-export the stable academic implementation from `ThuatToan_Final`.
+- `backend/fea_core/quality.py` contains mesh quality helper functions used by the backend result response.
+- The original `ThuatToan_Final` implementation is intentionally preserved during this safe refactor stage to avoid breaking the validated Q4 rectangle demo.
+
+Remaining target items:
+
+- Extract Pydantic schemas into `backend/schemas.py`.
+- Extract Q4 element logic into `backend/fea_core/element_q4.py`.
+- Add `backend/fea_core/postprocess.py` if post-processing grows beyond current service-level logic.
+- Add T3/Delaunay support only after the Q4 academic demo remains stable.
 
 ---
 
@@ -332,12 +373,12 @@ flowchart TD
     K --> L[Format API Response]
 ```
 
-### SimulationPipeline Interface
+### Current SimulationPipeline Interface
 
 ```python
 class SimulationPipeline:
-    def __init__(self, request):
-        self.request = request
+    def __init__(self, content):
+        self.content = content
 
     def validate(self):
         pass
@@ -360,27 +401,32 @@ class SimulationPipeline:
     def compute_quality(self):
         pass
 
+    def to_response(self):
+        pass
+
     def run(self):
-        self.validate()
-        self.generate_mesh()
-        self.build_material()
-        self.assemble()
-        self.solve()
-        self.postprocess()
-        self.compute_quality()
-        return self.to_response()
+        return (
+            self.validate()
+            .generate_mesh()
+            .build_material()
+            .assemble()
+            .solve()
+            .postprocess()
+            .compute_quality()
+            .to_response()
+        )
 ```
 
 ### Pipeline Stage Responsibilities
 
 | Stage | Responsibility |
 |---|---|
-| validate | Check geometry, material, mesh, boundary conditions |
+| validate | Check geometry, material, mesh, boundary conditions and build internal FEM config |
 | generate_mesh | Produce nodes and elements |
 | build_material | Build D matrix for linear elastic isotropic material |
 | assemble | Compute element stiffness and global stiffness matrix |
 | solve | Apply boundary conditions and solve K · U = F |
-| postprocess | Compute deformed nodes, displacement magnitude, max displacement |
+| postprocess | Compute deformed nodes, displacement magnitude, max displacement, fixed node IDs, and load markers |
 | compute_quality | Compute area, aspect ratio, bad element count |
 | to_response | Convert internal NumPy arrays into JSON-safe objects |
 
@@ -388,9 +434,24 @@ class SimulationPipeline:
 
 ## 8. FEA Core Modules
 
-### `meshing.py`
+### Current Safe Refactor Status
 
-Responsibilities:
+The current `backend/fea_core` package is a compatibility layer. Its purpose is to provide stable backend-facing imports while the validated academic implementation remains in `ThuatToan_Final`.
+
+| Module | Current status |
+|---|---|
+| `meshing.py` | Re-exports `MeshGenerator` from `ThuatToan_Final.step1_meshing` |
+| `material.py` | Re-exports `get_D_matrix` from `ThuatToan_Final.step2_get_D_matrix` |
+| `assembly.py` | Re-exports `assemble_K_global` from `ThuatToan_Final.step5_assemble_global` |
+| `solver.py` | Re-exports `apply_bcs_and_solve` from `ThuatToan_Final.step6_solve_system` |
+| `quality.py` | Contains mesh quality helper functions used by the API response |
+| `element_q4.py` | Target / future deeper extraction |
+| `element_t3.py` | Target / future work |
+| `postprocess.py` | Target / future extraction if post-processing grows |
+
+### Target Responsibilities
+
+#### `meshing.py`
 
 - Generate structured rectangular Q4 mesh.
 - Generate structured triangular mesh.
@@ -398,60 +459,46 @@ Responsibilities:
 - Validate mesh orientation.
 - Return nodes and elements in normalized internal format.
 
-### `material.py`
-
-Responsibilities:
+#### `material.py`
 
 - Build material matrix D.
 - Validate material constants.
 
-### `element_q4.py`
-
-Responsibilities:
+#### `element_q4.py`
 
 - Compute Q4 shape function derivatives.
 - Compute Jacobian.
 - Compute B matrix.
 - Compute Q4 element stiffness matrix.
 
-### `element_t3.py`
-
-Responsibilities:
+#### `element_t3.py`
 
 - Compute T3 constant strain triangle stiffness.
 - Support triangle mesh solving.
 
 Target status: Target / Future Work depending on deadline.
 
-### `assembly.py`
-
-Responsibilities:
+#### `assembly.py`
 
 - Dispatch element stiffness computation by element type.
 - Assemble global stiffness matrix.
 - Support Q4 and T3.
 
-### `solver.py`
-
-Responsibilities:
+#### `solver.py`
 
 - Build global force vector.
 - Resolve node selectors for boundary conditions.
 - Apply constraints.
 - Solve linear static system.
 
-### `postprocess.py`
-
-Responsibilities:
+#### `postprocess.py`
 
 - Compute deformed node positions.
 - Compute displacement magnitude.
 - Compute maximum displacement.
 - Compute basic stress approximation if implemented.
 
-### `quality.py`
-
-Responsibilities:
+#### `quality.py`
 
 - Compute element area.
 - Compute aspect ratio.
@@ -461,6 +508,22 @@ Responsibilities:
 ---
 
 ## 9. Frontend Architecture
+
+### Current Mobile Folder
+
+The current React Native app is located in `base/`. The target documentation may refer to `mobile/`, but the current implementation keeps `base/` to avoid disrupting the validated Android build.
+
+Current implemented frontend support includes:
+
+```text
+base/src/services/feaApi.js
+base/src/storage/projectStorage.js
+base/src/utils/exportSimulation.js
+base/src/screen/MyProjects.js
+base/src/screen/GeometryEditor.js
+base/src/screen/ProcessingStatus.js
+base/src/screen/MeshQualityView.js
+```
 
 ### Target Structure
 
@@ -528,13 +591,19 @@ For the current demo, local component state is acceptable. The target architectu
 
 ### API Service
 
-API calls should be moved to:
+Current implementation:
+
+```text
+base/src/services/feaApi.js
+```
+
+Target if the app is later renamed/restructured:
 
 ```text
 mobile/src/services/feaApi.js
 ```
 
-Target service:
+Target service behavior:
 
 ```javascript
 const API_BASE_URL = "http://10.0.2.2:8000";
@@ -563,6 +632,14 @@ export async function runSimulation(simulationRequest) {
 ### Storage Technology
 
 Use AsyncStorage.
+
+### Current Storage Service
+
+Current implementation:
+
+```text
+base/src/storage/projectStorage.js
+```
 
 ### Storage Keys
 
@@ -610,6 +687,15 @@ fea.simulations.<projectId> = [...]
 The backend returns mesh and result data. The frontend renders the visualization using SVG.
 
 This keeps the mobile app interactive and avoids sending static images as the primary result format.
+
+### Current Implemented Visualization Layers
+
+- Original mesh.
+- Deformed mesh.
+- Fixed support markers.
+- Load vectors.
+- Displacement contour lite.
+- Bad element highlights.
 
 ### Target Visualization Layers
 
@@ -710,11 +796,16 @@ Manual checklist:
 
 ### Android Emulator
 
-Backend:
+Recommended backend command after Phase 4:
 
 ```bash
-cd backend
-uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
+
+Compatibility backend command:
+
+```bash
+uvicorn api:app --host 0.0.0.0 --port 8000
 ```
 
 Mobile API base URL:
@@ -728,7 +819,7 @@ http://10.0.2.2:8000
 Backend runs on laptop:
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
 Mobile API base URL:
@@ -749,11 +840,15 @@ The phone and laptop must be on the same network.
 - Keep current API endpoint available.
 - Keep current mobile screen flow working.
 
+Status: Implemented.
+
 ### Step 2 — Create Backend Folder
 
-- Move `api.py` to `backend/main.py`.
-- Move requirements into `backend/requirements.txt`.
-- Keep imports working.
+- Move `api.py` behavior to `backend/main.py`.
+- Move/copy requirements into `backend/requirements.txt`.
+- Keep root `api.py` as compatibility entrypoint.
+
+Status: Implemented.
 
 ### Step 3 — Extract Simulation Service
 
@@ -761,21 +856,29 @@ The phone and laptop must be on the same network.
 - Move request-to-config mapping out of API handler.
 - Create `SimulationPipeline`.
 
+Status: Implemented.
+
 ### Step 4 — Rename FEA Core Modules
 
-- Move `ThuatToan_Final` logic into `backend/fea_core`.
-- Rename step files to domain modules.
-- Keep compatibility wrappers if needed.
+- Create `backend/fea_core` compatibility layer.
+- Keep wrappers for current `ThuatToan_Final` implementation.
+- Move deeper Q4 element logic later only if needed.
+
+Status: Partially implemented.
 
 ### Step 5 — Improve Frontend API Layer
 
-- Create `mobile/src/services/feaApi.js`.
+- Create `base/src/services/feaApi.js`.
 - Replace direct fetch calls inside screens.
+
+Status: Implemented.
 
 ### Step 6 — Add Local Storage
 
 - Add AsyncStorage.
 - Create project and simulation storage helpers.
+
+Status: Implemented.
 
 ### Step 7 — Add Dashboard Enhancements
 
@@ -783,6 +886,9 @@ The phone and laptop must be on the same network.
 - Add mesh quality cards.
 - Add displacement magnitude visualization.
 - Add JSON export.
+- Add simulation metadata and boundary summary panels.
+
+Status: Implemented for current academic demo.
 
 ---
 
@@ -793,11 +899,17 @@ The phone and laptop must be on the same network.
 | React Native mobile app | Implemented | P0 |
 | FastAPI backend | Implemented | P0 |
 | Q4 rectangle pipeline | Implemented | P0 |
-| Structured API response | Target | P0 |
-| SimulationPipeline object | Target | P0 |
-| AsyncStorage project history | Target | P1 |
-| Mesh quality metrics | Target | P1 |
-| JSON export | Target | P1 |
+| Structured API response | Implemented | P0 |
+| SimulationPipeline object | Implemented | P0 |
+| Backend service layer | Implemented | P0 |
+| Backend FEA core compatibility layer | Implemented | P0 |
+| AsyncStorage project history | Implemented | P1 |
+| Mesh quality metrics | Implemented | P1 |
+| JSON export | Implemented | P1 |
+| Result layer toggles | Implemented | P1 |
+| Displacement contour lite | Implemented | P1 |
+| Simulation metadata dashboard | Implemented | P1 |
+| Boundary summary dashboard | Implemented | P1 |
 | React Navigation | Target | P1 |
 | Custom polygon input | Target | P2 |
 | T3 element support | Target | P2 |
