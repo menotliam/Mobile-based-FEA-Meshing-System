@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, SafeAreaView, Switch, Modal, Platform, StatusBar } from 'react-native';
 import Svg, { Polygon, Polyline, Line, Text as SvgText } from 'react-native-svg';
 import Feather from 'react-native-vector-icons/Feather';
+import { stringifySimulationExport } from '../utils/exportSimulation';
 
 export default function MeshQualityView({ onBack, meshingData }) {
   const [highlightBad, setHighlightBad] = useState(false);
@@ -14,6 +15,7 @@ export default function MeshQualityView({ onBack, meshingData }) {
   const results = structuredData?.results || {};
   const boundaryVisualization = structuredData?.boundaryVisualization || {};
   const quality = structuredData?.quality || {};
+  const exportJson = useMemo(() => stringifySimulationExport(meshingData), [meshingData]);
 
   // Backward-compatible fallback while Phase 1 stabilizes the API contract.
   const nodes = mesh.nodes || simulationResult.nodes || [];
@@ -101,21 +103,8 @@ export default function MeshQualityView({ onBack, meshingData }) {
 
           return (
             <React.Fragment key={el.id ?? i}>
-              <Polyline
-                points={`${originalPoints.join(' ')} ${originalPoints[0]}`}
-                fill="none"
-                stroke="#111827"
-                strokeDasharray="1.4 1.2"
-                strokeWidth="0.5"
-                opacity="0.75"
-              />
-              <Polyline
-                points={`${deformedPoints.join(' ')} ${deformedPoints[0]}`}
-                fill="none"
-                stroke={highlightBad && isBad ? '#DC2626' : '#1D4ED8'}
-                strokeWidth={highlightBad && isBad ? '1.2' : '0.7'}
-                opacity="0.95"
-              />
+              <Polyline points={`${originalPoints.join(' ')} ${originalPoints[0]}`} fill="none" stroke="#111827" strokeDasharray="1.4 1.2" strokeWidth="0.5" opacity="0.75" />
+              <Polyline points={`${deformedPoints.join(' ')} ${deformedPoints[0]}`} fill="none" stroke={highlightBad && isBad ? '#DC2626' : '#1D4ED8'} strokeWidth={highlightBad && isBad ? '1.2' : '0.7'} opacity="0.95" />
             </React.Fragment>
           );
         })}
@@ -124,13 +113,7 @@ export default function MeshQualityView({ onBack, meshingData }) {
           const node = nodes[nodeId];
           if (!node) return null;
           const { sx, sy } = toCanvasPoint(node.x, node.y);
-          return (
-            <Polygon
-              key={`fixed-${nodeId}`}
-              points={`${sx},${sy - 1.8} ${sx - 1.4},${sy + 1.5} ${sx + 1.4},${sy + 1.5}`}
-              fill="#DC2626"
-            />
-          );
+          return <Polygon key={`fixed-${nodeId}`} points={`${sx},${sy - 1.8} ${sx - 1.4},${sy + 1.5} ${sx + 1.4},${sy + 1.5}`} fill="#DC2626" />;
         })}
 
         {loadMarkers.map((marker, index) => {
@@ -141,17 +124,7 @@ export default function MeshQualityView({ onBack, meshingData }) {
           const norm = Math.max(1e-9, Math.sqrt(fx * fx + fy * fy));
           const ex = sx + (fx / norm) * length;
           const ey = sy - (fy / norm) * length;
-          return (
-            <Line
-              key={`load-${index}`}
-              x1={sx}
-              y1={sy}
-              x2={ex}
-              y2={ey}
-              stroke="#F59E0B"
-              strokeWidth="0.8"
-            />
-          );
+          return <Line key={`load-${index}`} x1={sx} y1={sy} x2={ex} y2={ey} stroke="#F59E0B" strokeWidth="0.8" />;
         })}
       </Svg>
     );
@@ -226,12 +199,7 @@ export default function MeshQualityView({ onBack, meshingData }) {
               <Text style={styles.switchLabel}>Highlight bad elements</Text>
               <Text style={styles.switchDesc}>Mark elements with high aspect ratio or near-zero area.</Text>
             </View>
-            <Switch
-              trackColor={{ false: '#E5E7EB', true: '#BFDBFE' }}
-              thumbColor={highlightBad ? '#1A56DB' : '#9CA3AF'}
-              onValueChange={setHighlightBad}
-              value={highlightBad}
-            />
+            <Switch trackColor={{ false: '#E5E7EB', true: '#BFDBFE' }} thumbColor={highlightBad ? '#1A56DB' : '#9CA3AF'} onValueChange={setHighlightBad} value={highlightBad} />
           </View>
 
           <View style={styles.stabilityRow}>
@@ -286,22 +254,25 @@ export default function MeshQualityView({ onBack, meshingData }) {
             <View style={styles.sheetHandle} />
             <View style={styles.sheetHeader}>
               <View>
-                <Text style={styles.sheetTitle}>Export & Share</Text>
-                <Text style={styles.sheetSubtitle}>JSON export will be implemented in Phase 2.</Text>
+                <Text style={styles.sheetTitle}>Export JSON Package</Text>
+                <Text style={styles.sheetSubtitle}>Full simulation package: input, output, quality, and metadata.</Text>
               </View>
             </View>
-            <TouchableOpacity style={styles.shareOptionBtn}>
-              <View style={[styles.shareIconBox, { backgroundColor: '#1D4ED8' }]}>
-                <Feather name="code" size={20} color="#fff" />
-              </View>
-              <View style={styles.shareOptionContent}>
-                <Text style={styles.shareOptionTitle}>Export JSON package</Text>
-                <Text style={styles.shareOptionDesc}>Includes input, output, quality, and metadata.</Text>
-              </View>
-              <Feather name="chevron-right" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
+
+            <View style={styles.exportSummaryCard}>
+              <Text style={styles.exportSummaryTitle}>Package Summary</Text>
+              <Text style={styles.exportSummaryText}>Nodes: {nodeCount} • Elements: {elementCount}</Text>
+              <Text style={styles.exportSummaryText}>Max displacement: {maxDispText} m</Text>
+              <Text style={styles.exportSummaryText}>Format: JSON exportVersion 1.0</Text>
+            </View>
+
+            <Text style={styles.jsonPreviewLabel}>Preview</Text>
+            <ScrollView style={styles.jsonPreviewBox} nestedScrollEnabled>
+              <Text selectable style={styles.jsonPreviewText}>{exportJson}</Text>
+            </ScrollView>
+
             <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowExportModal(false)}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
+              <Text style={styles.cancelBtnText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -352,16 +323,17 @@ const styles = StyleSheet.create({
   navText: { fontSize: 10, color: '#9CA3AF', fontWeight: '700', marginTop: 4 },
   navActive: { color: '#1D4ED8' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  bottomSheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+  bottomSheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, maxHeight: '86%' },
   sheetHandle: { width: 40, height: 4, backgroundColor: '#D1D5DB', borderRadius: 2, alignSelf: 'center', marginBottom: 24 },
-  sheetHeader: { marginBottom: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  sheetHeader: { marginBottom: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sheetTitle: { fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 4 },
-  sheetSubtitle: { fontSize: 14, color: '#6B7280' },
-  shareOptionBtn: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#F3F4F6', marginBottom: 12 },
-  shareIconBox: { width: 44, height: 44, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
-  shareOptionContent: { flex: 1 },
-  shareOptionTitle: { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 4 },
-  shareOptionDesc: { fontSize: 13, color: '#6B7280' },
-  cancelBtn: { marginTop: 24, paddingVertical: 16, backgroundColor: '#F3F4F6', borderRadius: 12, alignItems: 'center' },
-  cancelBtnText: { fontSize: 16, fontWeight: '700', color: '#374151' }
+  sheetSubtitle: { fontSize: 14, color: '#6B7280', lineHeight: 20 },
+  exportSummaryCard: { backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE', borderRadius: 12, padding: 14, marginBottom: 16 },
+  exportSummaryTitle: { fontSize: 14, color: '#1D4ED8', fontWeight: '800', marginBottom: 8 },
+  exportSummaryText: { fontSize: 13, color: '#374151', fontWeight: '600', marginBottom: 4 },
+  jsonPreviewLabel: { fontSize: 14, fontWeight: '800', color: '#111827', marginBottom: 8 },
+  jsonPreviewBox: { maxHeight: 260, backgroundColor: '#111827', borderRadius: 12, padding: 12, marginBottom: 16 },
+  jsonPreviewText: { color: '#E5E7EB', fontSize: 11, lineHeight: 16, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  cancelBtn: { marginTop: 8, paddingVertical: 16, backgroundColor: '#F3F4F6', borderRadius: 12, alignItems: 'center' },
+  cancelBtnText: { fontSize: 16, fontWeight: '700', color: '#374151' },
 });
