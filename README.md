@@ -191,14 +191,8 @@ Mobile-based-FEA-Meshing-System/
 │       │   └── projectStorage.js
 │       └── utils/
 │           └── exportSimulation.js
-├── ThuatToan_Final/               # Original academic FEA core used by compatibility wrappers
-├── Master_Context.md
-├── Architecture.md
-├── Design_System.md
-├── Coding_Rules.md
-├── Demo_Checklist.md
-├── Presentation_Script.md
-└── Final_Status_Report.md
+└── ThuatToan_Final/               # Original academic FEA core used by compatibility wrappers
+
 ```
 
 Important: `ThuatToan_Final/` is still required because several backend FEA wrapper modules depend on the original academic implementation.
@@ -311,16 +305,16 @@ Install mobile dependencies:
 npm install
 ```
 
-Start Metro bundler if needed:
+Start Metro bundler if needed (in another terminal):
 
 ```bash
-npx react-native start
+npm start
 ```
 
 In another terminal inside `base/`, run the Android app:
 
 ```bash
-npx react-native run-android
+npm run android
 ```
 
 ### Android Emulator Backend URL
@@ -362,7 +356,7 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```bash
 cd Mobile-based-FEA-Meshing-System/base
 npm install
-npx react-native run-android
+npm run android
 ```
 
 Then open the app on the Android emulator and run one of the demo flows.
@@ -593,44 +587,6 @@ Example custom polygon request:
 
 ---
 
-## Important Notes for Submission
-
-When submitting the project as a zip file, keep:
-
-```text
-api.py
-requirements.txt
-backend/
-base/
-ThuatToan_Final/
-README.md
-Master_Context.md
-Architecture.md
-Design_System.md
-Coding_Rules.md
-Demo_Checklist.md
-Presentation_Script.md
-Final_Status_Report.md
-```
-
-Do not include generated or machine-specific folders:
-
-```text
-node_modules/
-base/node_modules/
-.venv/
-venv/
-__pycache__/
-.pytest_cache/
-.gradle/
-base/android/.gradle/
-base/android/app/build/
-build/
-dist/
-```
-
----
-
 ## Troubleshooting
 
 ### Backend is not reachable from Android emulator
@@ -705,12 +661,7 @@ npx react-native start --reset-cache
 
 Main project documentation:
 
-- `Master_Context.md` — product context, scope, assumptions, roadmap.
-- `Architecture.md` — system architecture, API contract, backend/frontend structure.
-- `Design_System.md` — visual design direction and UI guidelines.
-- `Coding_Rules.md` — implementation rules and collaboration constraints.
 - `Demo_Checklist.md` — repeatable final demo checklist.
-- `Presentation_Script.md` — technical presentation script.
 - `Final_Status_Report.md` — implemented scope, limitations, and future work.
 
 ---
