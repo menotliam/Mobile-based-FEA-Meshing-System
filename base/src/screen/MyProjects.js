@@ -32,6 +32,28 @@ function formatNumber(value, fallback = '-') {
   return String(Number(number.toFixed(4)));
 }
 
+function resolveGeometryLabel(input, metadata) {
+  const geometryType = metadata?.geometryType || input?.geometry?.type || 'rectangle';
+  if (geometryType === 'polygon') {
+    const pointCount = input?.geometry?.polygon?.points?.length || input?.coordinates?.length || 0;
+    return `Custom Polygon (${pointCount} points)`;
+  }
+  const width = input?.dimensions?.width ?? input?.geometry?.rectangle?.width ?? '-';
+  const height = input?.dimensions?.height ?? input?.geometry?.rectangle?.height ?? '-';
+  return `${width}m × ${height}m`;
+}
+
+function resolveMeshLabel(input, metadata) {
+  const algorithm = metadata?.algorithm || input?.meshConfig?.algorithm || input?.meshingConfig?.algorithm || 'structured';
+  const elementType = metadata?.elementType || input?.meshConfig?.elementType || input?.meshingConfig?.elementType || 'quad';
+  const nx = metadata?.meshInfo?.nx ?? input?.meshConfig?.nx ?? input?.meshingConfig?.nx ?? '-';
+  const ny = metadata?.meshInfo?.ny ?? input?.meshConfig?.ny ?? input?.meshingConfig?.ny ?? '-';
+  if (metadata?.geometryType === 'polygon' || input?.geometry?.type === 'polygon') {
+    return `${String(algorithm).toUpperCase()} ${String(elementType).toUpperCase()}`;
+  }
+  return `${String(algorithm).toUpperCase()} ${String(elementType).toUpperCase()}, NX=${nx}, NY=${ny}`;
+}
+
 function MiniMeshPreview({ simulation }) {
   const output = simulation?.output || {};
   const mesh = output?.data?.mesh || {};
@@ -220,7 +242,7 @@ export default function MyProjects({ onNavigate, refreshToken = 0 }) {
             style={styles.searchInput}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Search projects by name, mesh, or status..."
+            placeholder="Search projects by name, T3, Delaunay, or status..."
             placeholderTextColor="#9CA3AF"
           />
         </View>
@@ -255,7 +277,7 @@ export default function MyProjects({ onNavigate, refreshToken = 0 }) {
         ) : projects.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>No simulation projects yet</Text>
-            <Text style={styles.emptyDesc}>Create a rectangle simulation and the app will save the input, output, quality metrics, and metadata locally.</Text>
+            <Text style={styles.emptyDesc}>Create a rectangle or custom polygon simulation and the app will save the input, output, quality metrics, and metadata locally.</Text>
             <TouchableOpacity style={styles.emptyActionBtn} onPress={onNavigate}>
               <Text style={styles.emptyActionText}>Create First Project</Text>
             </TouchableOpacity>
@@ -263,7 +285,7 @@ export default function MyProjects({ onNavigate, refreshToken = 0 }) {
         ) : filteredProjects.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>No matching projects</Text>
-            <Text style={styles.emptyDesc}>Try a different project name, mesh density, or status keyword.</Text>
+            <Text style={styles.emptyDesc}>Try a different project name, element type, algorithm, or status keyword.</Text>
           </View>
         ) : (
           filteredProjects.map((project) => (
@@ -386,6 +408,14 @@ export default function MyProjects({ onNavigate, refreshToken = 0 }) {
                       </View>
                     </View>
                     <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Algorithm</Text>
+                      <Text style={styles.detailValue}>{latestMetadata.algorithm || '-'}</Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Element type</Text>
+                      <Text style={styles.detailValue}>{String(latestMetadata.elementType || '-').toUpperCase()}</Text>
+                    </View>
+                    <View style={styles.detailRow}>
                       <Text style={styles.detailLabel}>Max displacement</Text>
                       <Text style={styles.detailValue}>{formatNumber(latestResults?.maxDisplacement?.value)} m</Text>
                     </View>
@@ -407,7 +437,11 @@ export default function MyProjects({ onNavigate, refreshToken = 0 }) {
                 <Text style={styles.detailSectionTitle}>Input Parameters</Text>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Geometry</Text>
-                  <Text style={styles.detailValue}>{latestInput?.dimensions?.width || '-'}m × {latestInput?.dimensions?.height || '-'}m</Text>
+                  <Text style={styles.detailValue}>{resolveGeometryLabel(latestInput, latestMetadata)}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Mesh setup</Text>
+                  <Text style={styles.detailValue}>{resolveMeshLabel(latestInput, latestMetadata)}</Text>
                 </View>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Material E</Text>
@@ -416,10 +450,6 @@ export default function MyProjects({ onNavigate, refreshToken = 0 }) {
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Poisson ratio</Text>
                   <Text style={styles.detailValue}>{formatNumber(latestInput?.physics?.poissonRatio)}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Mesh density</Text>
-                  <Text style={styles.detailValue}>NX={latestInput?.meshingConfig?.nx || '-'}, NY={latestInput?.meshingConfig?.ny || '-'}</Text>
                 </View>
               </View>
             </ScrollView>
