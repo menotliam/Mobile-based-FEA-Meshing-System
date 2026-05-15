@@ -2,10 +2,11 @@ import time
 
 import numpy as np
 
-from ThuatToan_Final.step1_meshing import MeshGenerator
-from ThuatToan_Final.step2_get_D_matrix import get_D_matrix
-from ThuatToan_Final.step5_assemble_global import assemble_K_global
-from ThuatToan_Final.step6_solve_system import apply_bcs_and_solve
+from backend.fea_core.assembly import assemble_K_global
+from backend.fea_core.material import get_D_matrix
+from backend.fea_core.meshing import MeshGenerator
+from backend.fea_core.quality import compute_mesh_quality
+from backend.fea_core.solver import apply_bcs_and_solve
 
 
 # ==========================================
@@ -240,60 +241,6 @@ def get_load_markers(nodes, config):
             "force": [float(load["force"][0]), float(load["force"][1])],
         })
     return markers
-
-
-def polygon_area(coords):
-    x = coords[:, 0]
-    y = coords[:, 1]
-    return 0.5 * abs(float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))))
-
-
-def element_aspect_ratio(coords):
-    edge_lengths = []
-    for idx in range(len(coords)):
-        edge_lengths.append(float(np.linalg.norm(coords[(idx + 1) % len(coords)] - coords[idx])))
-    min_edge = max(min(edge_lengths), 1e-12)
-    return max(edge_lengths) / min_edge
-
-
-def compute_mesh_quality(nodes, elements):
-    element_metrics = []
-    areas = []
-    aspect_ratios = []
-    bad_count = 0
-
-    for element_id, element in enumerate(elements):
-        coords = nodes[element]
-        area = polygon_area(coords)
-        aspect_ratio = element_aspect_ratio(coords)
-        is_bad = area <= 1e-12 or aspect_ratio > 5.0
-        if is_bad:
-            bad_count += 1
-        areas.append(area)
-        aspect_ratios.append(aspect_ratio)
-        element_metrics.append({
-            "id": int(element_id),
-            "area": float(area),
-            "aspectRatio": float(aspect_ratio),
-            "isBad": bool(is_bad),
-        })
-
-    if not areas:
-        return {
-            "badElementCount": 0,
-            "minArea": 0.0,
-            "maxArea": 0.0,
-            "maxAspectRatio": 0.0,
-            "elementMetrics": [],
-        }
-
-    return {
-        "badElementCount": int(bad_count),
-        "minArea": float(min(areas)),
-        "maxArea": float(max(areas)),
-        "maxAspectRatio": float(max(aspect_ratios)),
-        "elementMetrics": element_metrics,
-    }
 
 
 def build_error_response(code, message, details=None, suggested_action="Review the input and retry."):
